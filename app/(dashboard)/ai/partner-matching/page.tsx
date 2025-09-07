@@ -2,6 +2,10 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import AIPartnerMatching from '@/components/ai/AIPartnerMatching'
 
+// This page uses dynamic server features
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export default async function AIPartnerMatchingPage() {
   const session = await getServerSession(authOptions)
   

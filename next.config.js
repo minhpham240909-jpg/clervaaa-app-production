@@ -3,35 +3,65 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['@prisma/client'],
     esmExternals: 'loose',
+    // Improve client component handling
+    optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
   },
   // Fix client component issues and Vercel deployment
   webpack: (config, { isServer, dev }) => {
+    // Client-side fallbacks
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
         net: false,
         tls: false,
+        crypto: false,
+        stream: false,
+        url: false,
+        zlib: false,
+        http: false,
+        https: false,
+        assert: false,
+        os: false,
+        path: false,
       }
     }
     
-    // Fix for client-reference-manifest.js issues
+    // Enhanced client-reference-manifest.js fix for Vercel
     if (!dev && !isServer) {
+      // Disable chunk splitting that causes manifest issues
       config.optimization.splitChunks = {
-        ...config.optimization.splitChunks,
+        chunks: 'all',
+        minSize: 20000,
+        minRemainingSize: 0,
+        minChunks: 1,
+        maxAsyncRequests: 30,
+        maxInitialRequests: 30,
+        enforceSizeThreshold: 50000,
         cacheGroups: {
-          ...config.optimization.splitChunks.cacheGroups,
-          default: false,
-          vendors: false,
-          framework: {
+          default: {
+            minChunks: 2,
+            priority: -20,
+            reuseExistingChunk: true,
+          },
+          vendor: {
+            test: /[\\/]node_modules[\\/]/,
+            name: 'vendors',
+            priority: -10,
             chunks: 'all',
-            name: 'framework',
-            test: /(?<!node_modules.*)[\\/]node_modules[\\/](react|react-dom|scheduler|prop-types|use-subscription)[\\/]/,
-            priority: 40,
-            enforce: true,
+          },
+          react: {
+            test: /[\\/]node_modules[\\/](react|react-dom)[\\/]/,
+            name: 'react',
+            priority: 20,
+            chunks: 'all',
           },
         },
       }
+      
+      // Prevent client-reference-manifest issues
+      config.optimization.usedExports = false
+      config.optimization.sideEffects = false
     }
     
     return config
@@ -48,6 +78,9 @@ const nextConfig = {
   // Optimize production build
   swcMinify: true,
   compress: true,
+  // Improve build performance
+  poweredByHeader: false,
+  reactStrictMode: true,
   images: {
     remotePatterns: [
       {

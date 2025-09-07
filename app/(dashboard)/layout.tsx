@@ -4,6 +4,20 @@ import { authOptions } from '@/lib/auth'
 import DashboardLayoutClient from '@/components/layout/DashboardLayoutClient'
 import { Suspense } from 'react'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
+
+// This layout uses dynamic server features
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
+// Loading component for Suspense fallback
+function DashboardLoading() {
+  return (
+    <div className="flex items-center justify-center min-h-screen">
+      <LoadingSpinner />
+    </div>
+  )
+}
 
 export default async function DashboardLayout({
   children,
@@ -26,10 +40,14 @@ export default async function DashboardLayout({
   }
 
   return (
-    <Suspense fallback={<LoadingSpinner />}>
-      <DashboardLayoutClient>
-        {children}
-      </DashboardLayoutClient>
-    </Suspense>
+    <ErrorBoundary>
+      <Suspense fallback={<DashboardLoading />}>
+        <DashboardLayoutClient>
+          <Suspense fallback={<DashboardLoading />}>
+            {children}
+          </Suspense>
+        </DashboardLayoutClient>
+      </Suspense>
+    </ErrorBoundary>
   )
 }
