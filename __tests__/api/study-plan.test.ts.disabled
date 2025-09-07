@@ -1,0 +1,658 @@
+import { NextRequest } from 'next/server';
+import { POST, GET } from '@/app/api/ai/study-plan/route';
+import { getServerSession } from 'next-auth';
+import { prisma } from '@/lib/prisma';
+// AI Service temporarily removed - tests will be updated with new implementation
+
+// Mock dependencies
+jest.mock('next-auth', () => ({
+  getServerSession: jest.fn(),
+}));
+
+jest.mock('@/lib/prisma', () => ({
+  prisma: {
+    user: {
+      findUnique: jest.fn(),
+    },
+    event: {
+      create: jest.fn(),
+    },
+    goal: {
+      create: jest.fn(),
+      findMany: jest.fn(),
+    },
+    userSubject: {
+      findMany: jest.fn(),
+    },
+    personalStudySession: {
+      findMany: jest.fn(),
+    },
+    reminder: {
+      findMany: jest.fn(),
+    },
+  },
+}));
+
+jest.mock('@/lib/ai', () => ({
+  __esModule: true,
+  default: {
+    generateStudyPlan: jest.fn(),
+  },
+}));
+
+const mockUser = {
+  id: 'user-123',
+  email: 'test@example.com',
+  studyLevel: 'INTERMEDIATE',
+  learningStyle: 'visual',
+  subjects: [
+    {
+      subject: { name: 'Mathematics' },
+    },
+    {
+      subject: { name: 'Physics' },
+    },
+  ],
+  goals: [
+    {
+      title: 'Master Calculus',
+      status: 'ACTIVE',
+    },
+  ],
+};
+
+const mockSession = {
+  user: {
+    email: 'test@example.com',
+  },
+};
+
+const mockStudyPlan = {
+  plan: [
+    {
+      date: '2024-01-15',
+      topic: 'Linear Algebra',
+      subject: 'Mathematics',
+      duration: 2,
+      priority: 'high',
+      description: 'Review matrix operations',
+    },
+    {
+      date: '2024-01-16',
+      topic: 'Calculus',
+      subject: 'Mathematics',
+      duration: 3,
+      priority: 'medium',
+      description: 'Practice derivatives',
+    },
+  ],
+  totalHours: 10,
+  estimatedCompletion: new Date('2024-02-01'),
+};
+
+const mockCreatedEvent = {
+  id: 'event-123',
+  title: 'Study: Linear Algebra',
+  startTime: new Date('2024-01-15T14:00:00Z'),
+  endTime: new Date('2024-01-15T16:00:00Z'),
+};
+
+const mockCreatedGoal = {
+  id: 'goal-123',
+  title: 'Complete AI-Generated Study Plan',
+};
+
+describe('/api/ai/study-plan POST', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (getServerSession as jest.Mock).mockResolvedValue(mockSession);
+    (prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser);
+    (AIService.generateStudyPlan as jest.Mock).mockResolvedValue(mockStudyPlan);
+    (prisma.event.create as jest.Mock).mockResolvedValue(mockCreatedEvent);
+    (prisma.goal.create as jest.Mock).mockResolvedValue(mockCreatedGoal);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('generates study plan successfully', async () => {
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        subjects: ['Mathematics', 'Physics'],
+        deadlines: [
+          {
+            subject: 'Mathematics',
+            deadline: '2024-01-30T00:00:00Z',
+            description: 'Final exam',
+          },
+        ],
+        availableHours: 20,
+        goals: ['Get better at problem solving'],
+        generateCalendarEvents: false,
+      }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.plan).toEqual(mockStudyPlan);
+    expect(data.goalId).toBe('goal-123');
+    expect(data.metadata.subjects).toEqual(['Mathematics', 'Physics']);
+    expect(data.metadata.availableHours).toBe(20);
+  });
+
+  it('returns 401 when user is not authenticated', async () => {
+    (getServerSession as jest.Mock).mockResolvedValue(null);
+
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        subjects: ['Math'],
+        deadlines: [],
+        availableHours: 10,
+      }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error).toBe('Unauthorized');
+  });
+
+  it('returns 404 when user is not found in database', async () => {
+    (prisma.user.findUnique as jest.Mock).mockResolvedValue(null);
+
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        subjects: ['Math'],
+        deadlines: [],
+        availableHours: 10,
+      }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(data.error).toBe('User not found');
+  });
+
+  it('validates request body schema', async () => {
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        // Missing required fields
+        subjects: [],
+        deadlines: [],
+        availableHours: 0,
+      }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toBe('Invalid request format');
+    expect(data.details).toBeInstanceOf(Array);
+  });
+
+  it('validates subjects array is not empty', async () => {
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        subjects: [], // Empty array should fail validation
+        deadlines: [],
+        availableHours: 10,
+      }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toBe('Invalid request format');
+  });
+
+  it('validates available hours range', async () => {
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        subjects: ['Math'],
+        deadlines: [],
+        availableHours: 200, // Exceeds max of 168 (hours in a week)
+      }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toBe('Invalid request format');
+  });
+
+  it('transforms deadline strings to Date objects', async () => {
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        subjects: ['Mathematics'],
+        deadlines: [
+          {
+            subject: 'Mathematics',
+            deadline: '2024-01-30T00:00:00Z',
+            description: 'Final exam',
+          },
+        ],
+        availableHours: 20,
+      }),
+    });
+
+    await POST(request);
+
+    expect(AIService.generateStudyPlan).toHaveBeenCalledWith({
+      subjects: ['Mathematics'],
+      deadlines: [
+        {
+          subject: 'Mathematics',
+          deadline: new Date('2024-01-30T00:00:00Z'),
+          description: 'Final exam',
+        },
+      ],
+      studyLevel: 'INTERMEDIATE',
+      learningStyle: 'visual',
+      availableHours: 20,
+      goals: ['Master Calculus'],
+    });
+  });
+
+  it('includes user goals in AI request', async () => {
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        subjects: ['Mathematics'],
+        deadlines: [],
+        availableHours: 20,
+        goals: ['Get better grades'],
+      }),
+    });
+
+    await POST(request);
+
+    expect(AIService.generateStudyPlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        goals: ['Get better grades', 'Master Calculus'],
+      })
+    );
+  });
+
+  it('creates calendar events when requested', async () => {
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        subjects: ['Mathematics'],
+        deadlines: [],
+        availableHours: 20,
+        generateCalendarEvents: true,
+      }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(prisma.event.create).toHaveBeenCalledTimes(2); // Two items in mockStudyPlan
+    expect(prisma.event.create).toHaveBeenCalledWith({
+      data: {
+        userId: 'user-123',
+        title: 'Study: Linear Algebra',
+        description: 'Review matrix operations',
+        startTime: expect.any(Date),
+        endTime: expect.any(Date),
+        eventType: 'STUDY_SESSION',
+        location: 'Self-study',
+      },
+    });
+
+    expect(data.calendarEvents).toHaveLength(2);
+    expect(data.calendarEvents[0]).toEqual({
+      id: 'event-123',
+      title: 'Study: Linear Algebra',
+      start: expect.any(String),
+      end: expect.any(String),
+      type: 'study_session',
+      subject: 'Mathematics',
+      priority: 'high',
+    });
+  });
+
+  it('does not create calendar events when not requested', async () => {
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        subjects: ['Mathematics'],
+        deadlines: [],
+        availableHours: 20,
+        generateCalendarEvents: false,
+      }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(prisma.event.create).not.toHaveBeenCalled();
+    expect(data.calendarEvents).toBeUndefined();
+  });
+
+  it('creates a goal for the study plan', async () => {
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        subjects: ['Mathematics', 'Physics'],
+        deadlines: [],
+        availableHours: 20,
+      }),
+    });
+
+    await POST(request);
+
+    expect(prisma.goal.create).toHaveBeenCalledWith({
+      data: {
+        userId: 'user-123',
+        title: 'Complete AI-Generated Study Plan',
+        description: 'Study plan covering: Mathematics, Physics',
+        goalType: 'STUDY_HOURS',
+        target: 10,
+        current: 0,
+        unit: 'hours',
+        deadline: mockStudyPlan.estimatedCompletion,
+        status: 'ACTIVE',
+        isPublic: false,
+      },
+    });
+  });
+
+  it('handles AI service errors', async () => {
+    (AIService.generateStudyPlan as jest.Mock).mockRejectedValue(
+      new Error('AI service failed')
+    );
+
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        subjects: ['Mathematics'],
+        deadlines: [],
+        availableHours: 20,
+      }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(data.error).toBe('Failed to generate study plan');
+  });
+
+  it('handles calendar event creation errors', async () => {
+    (prisma.event.create as jest.Mock).mockRejectedValue(
+      new Error('Database error')
+    );
+
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        subjects: ['Mathematics'],
+        deadlines: [],
+        availableHours: 20,
+        generateCalendarEvents: true,
+      }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(data.error).toBe('Failed to generate study plan');
+  });
+
+  it('handles goal creation errors', async () => {
+    (prisma.goal.create as jest.Mock).mockRejectedValue(
+      new Error('Database error')
+    );
+
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        subjects: ['Mathematics'],
+        deadlines: [],
+        availableHours: 20,
+      }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(data.error).toBe('Failed to generate study plan');
+  });
+
+  it('defaults optional fields correctly', async () => {
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        subjects: ['Mathematics'],
+        deadlines: [],
+        availableHours: 20,
+        // goals and generateCalendarEvents not provided
+      }),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(AIService.generateStudyPlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        goals: ['Master Calculus'], // Only user goals, no additional goals
+      })
+    );
+  });
+});
+
+describe('/api/ai/study-plan GET', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (getServerSession as jest.Mock).mockResolvedValue(mockSession);
+    (prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser);
+    (prisma.userSubject.findMany as jest.Mock).mockResolvedValue([
+      {
+        subject: { name: 'Mathematics', category: 'Science' },
+        skillLevel: 'INTERMEDIATE',
+        isActive: true,
+      },
+    ]);
+    (prisma.personalStudySession.findMany as jest.Mock).mockResolvedValue([
+      {
+        title: 'Math Session',
+        startTime: new Date('2024-01-01T10:00:00Z'),
+        endTime: new Date('2024-01-01T12:00:00Z'),
+        rating: 4,
+        topics: 'Algebra',
+      },
+    ]);
+    (prisma.goal.findMany as jest.Mock).mockResolvedValue([
+      {
+        title: 'Master Calculus',
+        current: 5,
+        target: 10,
+        deadline: new Date('2024-02-01'),
+      },
+    ]);
+    (prisma.reminder.findMany as jest.Mock).mockResolvedValue([
+      {
+        title: 'Math Assignment Due',
+        dueDate: new Date('2024-01-15'),
+        priority: 'HIGH',
+      },
+    ]);
+  });
+
+  it('returns study plan context successfully', async () => {
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan');
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.context.subjects).toEqual([
+      {
+        name: 'Mathematics',
+        skillLevel: 'INTERMEDIATE',
+        category: 'Science',
+      },
+    ]);
+    expect(data.context.recentActivity).toHaveLength(1);
+    expect(data.context.activeGoals).toHaveLength(1);
+    expect(data.context.upcomingDeadlines).toHaveLength(1);
+  });
+
+  it('returns 401 when user is not authenticated', async () => {
+    (getServerSession as jest.Mock).mockResolvedValue(null);
+
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan');
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error).toBe('Unauthorized');
+  });
+
+  it('returns 404 when user is not found', async () => {
+    (prisma.user.findUnique as jest.Mock).mockResolvedValue(null);
+
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan');
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(data.error).toBe('User not found');
+  });
+
+  it('calculates session duration correctly', async () => {
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan');
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(data.context.recentActivity[0].duration).toBe(120); // 2 hours in minutes
+  });
+
+  it('calculates goal progress correctly', async () => {
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan');
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(data.context.activeGoals[0].progress).toBe(50); // 5/10 * 100
+  });
+
+  it('filters reminders to next 30 days', async () => {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 31); // 31 days from now
+
+    (prisma.reminder.findMany as jest.Mock).mockResolvedValue([
+      {
+        title: 'Near deadline',
+        dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), // 15 days
+        priority: 'HIGH',
+      },
+      {
+        title: 'Far deadline',
+        dueDate: futureDate,
+        priority: 'LOW',
+      },
+    ]);
+
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan');
+
+    await GET(request);
+
+    expect(prisma.reminder.findMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'user-123',
+        dueDate: {
+          gte: expect.any(Date),
+          lte: expect.any(Date),
+        },
+      },
+      orderBy: { dueDate: 'asc' },
+    });
+  });
+
+  it('includes helpful recommendations', async () => {
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan');
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(data.recommendations).toBeInstanceOf(Array);
+    expect(data.recommendations.length).toBeGreaterThan(0);
+    expect(data.recommendations[0]).toContain('deadline');
+  });
+
+  it('handles database errors in GET', async () => {
+    (prisma.userSubject.findMany as jest.Mock).mockRejectedValue(
+      new Error('Database error')
+    );
+
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan');
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(data.error).toBe('Failed to fetch study plan context');
+  });
+
+  it('handles empty results gracefully', async () => {
+    (prisma.userSubject.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.personalStudySession.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.goal.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.reminder.findMany as jest.Mock).mockResolvedValue([]);
+
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan');
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.context.subjects).toEqual([]);
+    expect(data.context.recentActivity).toEqual([]);
+    expect(data.context.activeGoals).toEqual([]);
+    expect(data.context.upcomingDeadlines).toEqual([]);
+  });
+
+  it('fetches data with correct query parameters', async () => {
+    const request = new NextRequest('http://localhost:3000/api/ai/study-plan');
+
+    await GET(request);
+
+    expect(prisma.userSubject.findMany).toHaveBeenCalledWith({
+      where: { userId: 'user-123', isActive: true },
+      include: { subject: true },
+    });
+
+    expect(prisma.personalStudySession.findMany).toHaveBeenCalledWith({
+      where: { userId: 'user-123' },
+      orderBy: { startTime: 'desc' },
+      take: 10,
+    });
+
+    expect(prisma.goal.findMany).toHaveBeenCalledWith({
+      where: { userId: 'user-123', status: 'ACTIVE' },
+    });
+  });
+});

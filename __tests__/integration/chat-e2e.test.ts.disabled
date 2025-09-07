@@ -1,0 +1,788 @@
+import { NextRequest } from 'next/server';
+import { POST as chatPost, GET as chatGet } from '@/app/api/chat/route';
+import { POST as feedbackPost } from '@/app/api/chat/feedback/route';
+import { getServerSession } from 'next-auth';
+import { prisma } from '@/lib/prisma';
+// AI Service temporarily removed - tests will be updated with new implementation
+import { ValidationUtils } from '@/lib/validation';
+import { logger } from '@/lib/logger';
+import { monitoring } from '@/lib/monitoring';
+
+// Mock all dependencies
+jest.mock('next-auth', () => ({
+  getServerSession: jest.fn(),
+}));
+
+jest.mock('@/lib/prisma', () => ({
+  prisma: {
+    user: {
+      findUnique: jest.fn(),
+    },
+    chatbotMessage: {
+      findMany: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    },
+  },
+}));
+
+jest.mock('@/lib/ai', () => ({
+  __esModule: true,
+  default: {
+    generateChatbotResponse: jest.fn(),
+  },
+}));
+
+jest.mock('@/lib/validation', () => ({
+  ValidationUtils: {
+    validateAndSanitize: jest.fn(),
+  },
+  chatSchemas: {
+    sendMessage: {},
+  },
+}));
+
+jest.mock('@/lib/logger', () => ({
+  logger: {
+    logRequest: jest.fn(() => ({ requestId: 'test-id' })),
+    logResponse: jest.fn(),
+    error: jest.fn(),
+  },
+}));
+
+jest.mock('@/lib/monitoring', () => ({
+  monitoring: {
+    recordAPIPerformance: jest.fn(),
+  },
+}));
+
+jest.mock('@/lib/rate-limit', () => ({
+  withRateLimit: (limiter: any, handler: any) => handler,
+  chatLimiter: {},
+}));
+
+describe('Chat Functionality End-to-End Integration', () => {
+  let mockUser: any;
+  let mockSession: any;
+  let mockConversationHistory: any[];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    mockUser = {
+      id: 'user-123',
+      email: 'test@example.com',
+      name: 'Test User',
+      studyLevel: 'INTERMEDIATE',
+      learningStyle: 'visual',
+      major: 'Computer Science',
+      subjects: [
+        {
+          subject: { name: 'Mathematics' },
+        },
+        {
+          subject: { name: 'Physics' },
+        },
+      ],
+      goals: [
+        {
+          title: 'Master Calculus',
+          status: 'ACTIVE',
+        },
+        {
+          title: 'Learn Python',
+          status: 'ACTIVE',
+        },
+      ],
+    };
+
+    mockSession = {
+      user: {
+        email: mockUser.email,
+      },
+    };
+
+    mockConversationHistory = [
+      {
+        id: 'msg-1',
+        message: 'Hello, can you help me with calculus?',
+        response: 'Of course! I\'d be happy to help you with calculus. What specific topic would you like to work on?',
+        messageType: 'GENERAL',
+        helpful: null,
+        createdAt: new Date('2024-01-01T10:00:00Z'),
+        context: null,
+      },
+      {
+        id: 'msg-2',
+        message: 'I need help with derivatives',
+        response: 'Derivatives measure the rate of change. Let me explain the basic rules...',
+        messageType: 'SUBJECT_HELP',
+        helpful: true,
+        createdAt: new Date('2024-01-01T10:05:00Z'),
+        context: '{"subject":"calculus","topic":"derivatives"}',
+      },
+    ];
+
+    // Default mocks
+    (getServerSession as jest.Mock).mockResolvedValue(mockSession);
+    (prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser);
+    (prisma.chatbotMessage.findMany as jest.Mock).mockResolvedValue(mockConversationHistory);
+    (prisma.chatbotMessage.create as jest.Mock).mockResolvedValue({
+      id: 'new-msg-id',
+      createdAt: new Date(),
+    });
+    (ValidationUtils.validateAndSanitize as jest.Mock).mockImplementation((schema, data) => data);
+    (AIService.generateChatbotResponse as jest.Mock).mockResolvedValue(
+      'This is a helpful AI response about your question.'
+    );
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  describe('Complete Chat Session Flow', () => {
+    it('completes a full chat interaction from start to finish', async () => {
+      // Step 1: User starts a new chat conversation
+      const chatRequest = new NextRequest('http://localhost:3000/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: 'I need help understanding integration by parts',
+          context: {
+            type: 'subject_help',
+            metadata: {
+              subject: 'Calculus',
+              difficulty: 'intermediate',
+            },
+          },
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      (ValidationUtils.validateAndSanitize as jest.Mock).mockReturnValue({
+        message: 'I need help understanding integration by parts',
+        context: {
+          type: 'subject_help',
+          metadata: {
+            subject: 'Calculus',
+            difficulty: 'intermediate',
+          },
+        },
+      });
+
+      const chatResponse = await chatPost(chatRequest);
+      const chatData = await chatResponse.json();
+
+      // Verify chat message was processed successfully
+      expect(chatResponse.status).toBe(200);
+      expect(chatData.response).toBe('This is a helpful AI response about your question.');
+      expect(chatData.context).toBe('subject_help');
+      expect(chatData.timestamp).toBeDefined();
+
+      // Verify AI service was called with correct context
+      expect(AIService.generateChatbotResponse).toHaveBeenCalledWith(
+        'I need help understanding integration by parts',
+        {
+          userId: 'user-123',
+          conversationHistory: expect.any(Array),
+          userProfile: {
+            studyLevel: 'INTERMEDIATE',
+            learningStyle: 'visual',
+            major: 'Computer Science',
+            subjects: ['Mathematics', 'Physics'],
+            goals: ['Master Calculus', 'Learn Python'],
+          },
+        }
+      );
+
+      // Verify message was saved to database
+      expect(prisma.chatbotMessage.create).toHaveBeenCalledWith({
+        data: {
+          userId: 'user-123',
+          message: 'I need help understanding integration by parts',
+          response: 'This is a helpful AI response about your question.',
+          messageType: 'subject_help',
+          context: '{"subject":"Calculus","difficulty":"intermediate"}',
+        },
+      });
+
+      // Verify performance monitoring
+      expect(monitoring.recordAPIPerformance).toHaveBeenCalledWith(
+        '/api/chat',
+        'POST',
+        expect.any(Number),
+        200
+      );
+
+      // Step 2: User provides feedback on the AI response
+      const feedbackRequest = new NextRequest('http://localhost:3000/api/chat/feedback', {
+        method: 'POST',
+        body: JSON.stringify({
+          messageId: 'new-msg-id',
+          helpful: true,
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      (prisma.chatbotMessage.update as jest.Mock).mockResolvedValue({
+        id: 'new-msg-id',
+        helpful: true,
+      });
+
+      const feedbackResponse = await feedbackPost(feedbackRequest);
+
+      expect(feedbackResponse.status).toBe(200);
+      expect(prisma.chatbotMessage.update).toHaveBeenCalledWith({
+        where: { id: 'new-msg-id' },
+        data: { helpful: true },
+      });
+
+      // Step 3: User retrieves conversation history
+      const historyRequest = new NextRequest('http://localhost:3000/api/chat?limit=10&offset=0');
+
+      const historyResponse = await chatGet(historyRequest);
+      const historyData = await historyResponse.json();
+
+      expect(historyResponse.status).toBe(200);
+      expect(historyData.conversations).toHaveLength(2);
+      expect(historyData.conversations[0]).toEqual({
+        id: 'msg-1',
+        message: 'Hello, can you help me with calculus?',
+        response: 'Of course! I\'d be happy to help you with calculus. What specific topic would you like to work on?',
+        type: 'GENERAL',
+        helpful: null,
+        timestamp: new Date('2024-01-01T10:00:00Z'),
+        context: null,
+      });
+      expect(historyData.pagination).toEqual({
+        limit: 10,
+        offset: 0,
+        hasMore: false,
+      });
+    });
+
+    it('handles conversation continuity across multiple messages', async () => {
+      // Simulate ongoing conversation with context
+      const followUpMessages = [
+        {
+          message: 'Can you give me a specific example?',
+          expectedResponse: 'Here\'s a specific example of integration by parts...',
+        },
+        {
+          message: 'I still don\'t understand the u-substitution part',
+          expectedResponse: 'Let me break down u-substitution step by step...',
+        },
+        {
+          message: 'That makes sense now! Can you give me a practice problem?',
+          expectedResponse: 'Great! Here\'s a practice problem for you to try...',
+        },
+      ];
+
+      for (let i = 0; i < followUpMessages.length; i++) {
+        const { message, expectedResponse } = followUpMessages[i];
+
+        (AIService.generateChatbotResponse as jest.Mock).mockResolvedValue(expectedResponse);
+        (ValidationUtils.validateAndSanitize as jest.Mock).mockReturnValue({
+          message,
+          context: { type: 'subject_help' },
+        });
+
+        const request = new NextRequest('http://localhost:3000/api/chat', {
+          method: 'POST',
+          body: JSON.stringify({
+            message,
+            context: { type: 'subject_help' },
+          }),
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const response = await chatPost(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.response).toBe(expectedResponse);
+
+        // Verify conversation history was passed to AI service
+        expect(AIService.generateChatbotResponse).toHaveBeenCalledWith(
+          message,
+          expect.objectContaining({
+            conversationHistory: expect.any(Array),
+            userProfile: expect.objectContaining({
+              studyLevel: 'INTERMEDIATE',
+              subjects: ['Mathematics', 'Physics'],
+            }),
+          })
+        );
+      }
+
+      expect(prisma.chatbotMessage.create).toHaveBeenCalledTimes(followUpMessages.length);
+    });
+  });
+
+  describe('Context-Aware Conversations', () => {
+    it('adapts responses based on user profile and study level', async () => {
+      const beginnerUser = {
+        ...mockUser,
+        studyLevel: 'BEGINNER',
+        subjects: [{ subject: { name: 'Basic Math' } }],
+      };
+
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue(beginnerUser);
+
+      const request = new NextRequest('http://localhost:3000/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: 'What are derivatives?',
+          context: { type: 'subject_help' },
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      (ValidationUtils.validateAndSanitize as jest.Mock).mockReturnValue({
+        message: 'What are derivatives?',
+        context: { type: 'subject_help' },
+      });
+
+      await chatPost(request);
+
+      expect(AIService.generateChatbotResponse).toHaveBeenCalledWith(
+        'What are derivatives?',
+        expect.objectContaining({
+          userProfile: expect.objectContaining({
+            studyLevel: 'BEGINNER',
+            subjects: ['Basic Math'],
+          }),
+        })
+      );
+    });
+
+    it('maintains conversation context across different chat types', async () => {
+      const contextTypes = ['general', 'study_plan', 'subject_help', 'motivation'];
+
+      for (const contextType of contextTypes) {
+        (ValidationUtils.validateAndSanitize as jest.Mock).mockReturnValue({
+          message: `Help me with ${contextType}`,
+          context: { type: contextType },
+        });
+
+        const request = new NextRequest('http://localhost:3000/api/chat', {
+          method: 'POST',
+          body: JSON.stringify({
+            message: `Help me with ${contextType}`,
+            context: { type: contextType },
+          }),
+          headers: { 'content-type': 'application/json' },
+        });
+
+        const response = await chatPost(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.context).toBe(contextType);
+        
+        expect(prisma.chatbotMessage.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              messageType: contextType,
+            }),
+          })
+        );
+      }
+    });
+
+    it('incorporates user goals into AI responses', async () => {
+      const goalFocusedUser = {
+        ...mockUser,
+        goals: [
+          { title: 'Pass Calculus Final Exam', status: 'ACTIVE' },
+          { title: 'Improve Problem-Solving Speed', status: 'ACTIVE' },
+        ],
+      };
+
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue(goalFocusedUser);
+
+      const request = new NextRequest('http://localhost:3000/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: 'I\'m struggling with calculus',
+          context: { type: 'motivation' },
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      (ValidationUtils.validateAndSanitize as jest.Mock).mockReturnValue({
+        message: 'I\'m struggling with calculus',
+        context: { type: 'motivation' },
+      });
+
+      await chatPost(request);
+
+      expect(AIService.generateChatbotResponse).toHaveBeenCalledWith(
+        'I\'m struggling with calculus',
+        expect.objectContaining({
+          userProfile: expect.objectContaining({
+            goals: ['Pass Calculus Final Exam', 'Improve Problem-Solving Speed'],
+          }),
+        })
+      );
+    });
+  });
+
+  describe('Error Handling and Recovery', () => {
+    it('handles AI service failures gracefully and provides fallback response', async () => {
+      (AIService.generateChatbotResponse as jest.Mock).mockRejectedValue(
+        new Error('AI service temporarily unavailable')
+      );
+
+      const request = new NextRequest('http://localhost:3000/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: 'Help me with math',
+          context: { type: 'subject_help' },
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      (ValidationUtils.validateAndSanitize as jest.Mock).mockReturnValue({
+        message: 'Help me with math',
+        context: { type: 'subject_help' },
+      });
+
+      const response = await chatPost(request);
+
+      expect(response.status).toBe(500);
+      expect(logger.error).toHaveBeenCalledWith(
+        'Chat API error:',
+        expect.any(Error),
+        expect.any(Object)
+      );
+    });
+
+    it('maintains conversation history even when individual messages fail', async () => {
+      // First successful message
+      let request = new NextRequest('http://localhost:3000/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: 'First message',
+          context: { type: 'general' },
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      (ValidationUtils.validateAndSanitize as jest.Mock).mockReturnValue({
+        message: 'First message',
+        context: { type: 'general' },
+      });
+
+      let response = await chatPost(request);
+      expect(response.status).toBe(200);
+
+      // Second message fails due to AI service error
+      (AIService.generateChatbotResponse as jest.Mock).mockRejectedValueOnce(
+        new Error('Temporary AI failure')
+      );
+
+      request = new NextRequest('http://localhost:3000/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: 'Second message that fails',
+          context: { type: 'general' },
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      (ValidationUtils.validateAndSanitize as jest.Mock).mockReturnValue({
+        message: 'Second message that fails',
+        context: { type: 'general' },
+      });
+
+      response = await chatPost(request);
+      expect(response.status).toBe(500);
+
+      // Third message succeeds and should still have conversation history
+      (AIService.generateChatbotResponse as jest.Mock).mockResolvedValue(
+        'Third message response'
+      );
+
+      request = new NextRequest('http://localhost:3000/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: 'Third message after recovery',
+          context: { type: 'general' },
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      (ValidationUtils.validateAndSanitize as jest.Mock).mockReturnValue({
+        message: 'Third message after recovery',
+        context: { type: 'general' },
+      });
+
+      response = await chatPost(request);
+      expect(response.status).toBe(200);
+
+      // Verify conversation history was still retrieved
+      expect(prisma.chatbotMessage.findMany).toHaveBeenCalledTimes(3);
+    });
+
+    it('handles database connection issues gracefully', async () => {
+      (prisma.user.findUnique as jest.Mock).mockRejectedValue(
+        new Error('Database connection timeout')
+      );
+
+      const request = new NextRequest('http://localhost:3000/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: 'Help me study',
+          context: { type: 'general' },
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      const response = await chatPost(request);
+
+      expect(response.status).toBe(500);
+      expect(logger.error).toHaveBeenCalled();
+    });
+
+    it('validates user input and provides helpful error messages', async () => {
+      const validationError = new Error('Validation failed');
+      validationError.name = 'ZodError';
+      (ValidationUtils.validateAndSanitize as jest.Mock).mockImplementation(() => {
+        throw validationError;
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: '', // Empty message should fail validation
+          context: { type: 'invalid_type' },
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      const response = await chatPost(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toBe('Invalid request format');
+    });
+  });
+
+  describe('Feedback and Learning Loop', () => {
+    it('processes user feedback and updates message records', async () => {
+      // Test positive feedback
+      let feedbackRequest = new NextRequest('http://localhost:3000/api/chat/feedback', {
+        method: 'POST',
+        body: JSON.stringify({
+          messageId: 'msg-1',
+          helpful: true,
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      let response = await feedbackPost(feedbackRequest);
+      expect(response.status).toBe(200);
+
+      expect(prisma.chatbotMessage.update).toHaveBeenCalledWith({
+        where: { id: 'msg-1' },
+        data: { helpful: true },
+      });
+
+      // Test negative feedback
+      feedbackRequest = new NextRequest('http://localhost:3000/api/chat/feedback', {
+        method: 'POST',
+        body: JSON.stringify({
+          messageId: 'msg-2',
+          helpful: false,
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      response = await feedbackPost(feedbackRequest);
+      expect(response.status).toBe(200);
+
+      expect(prisma.chatbotMessage.update).toHaveBeenCalledWith({
+        where: { id: 'msg-2' },
+        data: { helpful: false },
+      });
+    });
+
+    it('tracks conversation quality over time', async () => {
+      // Retrieve conversation history with feedback data
+      const historyRequest = new NextRequest('http://localhost:3000/api/chat');
+      const response = await chatGet(historyRequest);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      
+      // Verify feedback is included in conversation history
+      const conversationWithFeedback = data.conversations.find(
+        (conv: any) => conv.id === 'msg-2'
+      );
+      expect(conversationWithFeedback.helpful).toBe(true);
+      
+      const conversationWithoutFeedback = data.conversations.find(
+        (conv: any) => conv.id === 'msg-1'
+      );
+      expect(conversationWithoutFeedback.helpful).toBeNull();
+    });
+  });
+
+  describe('Performance and Scalability', () => {
+    it('handles high-frequency chat requests efficiently', async () => {
+      const startTime = Date.now();
+      const concurrentRequests = 10;
+
+      // Simulate multiple concurrent chat requests
+      const requests = Array(concurrentRequests).fill(null).map((_, i) => {
+        (ValidationUtils.validateAndSanitize as jest.Mock).mockReturnValue({
+          message: `Concurrent message ${i}`,
+          context: { type: 'general' },
+        });
+
+        return chatPost(new NextRequest('http://localhost:3000/api/chat', {
+          method: 'POST',
+          body: JSON.stringify({
+            message: `Concurrent message ${i}`,
+            context: { type: 'general' },
+          }),
+          headers: { 'content-type': 'application/json' },
+        }));
+      });
+
+      const responses = await Promise.all(requests);
+      const endTime = Date.now();
+
+      // All requests should succeed
+      responses.forEach(response => {
+        expect(response.status).toBe(200);
+      });
+
+      // Should complete within reasonable time (adjust threshold as needed)
+      expect(endTime - startTime).toBeLessThan(5000);
+
+      // Verify performance monitoring was called for each request
+      expect(monitoring.recordAPIPerformance).toHaveBeenCalledTimes(concurrentRequests);
+    });
+
+    it('manages conversation history size efficiently', async () => {
+      // Mock a very long conversation history
+      const longHistory = Array(50).fill(null).map((_, i) => ({
+        id: `msg-${i}`,
+        message: `Message ${i}`,
+        response: `Response ${i}`,
+        createdAt: new Date(Date.now() - i * 60000), // 1 minute apart
+      }));
+
+      (prisma.chatbotMessage.findMany as jest.Mock).mockResolvedValue(longHistory);
+
+      const request = new NextRequest('http://localhost:3000/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: 'New message with long history',
+          context: { type: 'general' },
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      (ValidationUtils.validateAndSanitize as jest.Mock).mockReturnValue({
+        message: 'New message with long history',
+        context: { type: 'general' },
+      });
+
+      const response = await chatPost(request);
+
+      expect(response.status).toBe(200);
+
+      // Verify that history query is limited (should only take 10 most recent)
+      expect(prisma.chatbotMessage.findMany).toHaveBeenCalledWith({
+        where: { userId: 'user-123' },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      });
+    });
+  });
+
+  describe('Security and Privacy', () => {
+    it('prevents unauthorized access to chat functionality', async () => {
+      (getServerSession as jest.Mock).mockResolvedValue(null);
+
+      const request = new NextRequest('http://localhost:3000/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: 'Unauthorized message',
+          context: { type: 'general' },
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      const response = await chatPost(request);
+
+      expect(response.status).toBe(401);
+      expect(AIService.generateChatbotResponse).not.toHaveBeenCalled();
+      expect(prisma.chatbotMessage.create).not.toHaveBeenCalled();
+    });
+
+    it('isolates user conversations and prevents data leakage', async () => {
+      // User tries to access another user's conversation history
+      const historyRequest = new NextRequest('http://localhost:3000/api/chat');
+      await chatGet(historyRequest);
+
+      // Verify query is filtered by current user ID
+      expect(prisma.chatbotMessage.findMany).toHaveBeenCalledWith({
+        where: { userId: 'user-123' },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        skip: 0,
+      });
+    });
+
+    it('sanitizes user input to prevent injection attacks', async () => {
+      const maliciousInput = {
+        message: '<script>alert("xss")</script>DROP TABLE users;',
+        context: {
+          type: 'general',
+          metadata: {
+            malicious: '<img src="x" onerror="alert(1)">',
+          },
+        },
+      };
+
+      (ValidationUtils.validateAndSanitize as jest.Mock).mockReturnValue({
+        message: 'Clean message content',
+        context: {
+          type: 'general',
+          metadata: {
+            malicious: 'Clean metadata',
+          },
+        },
+      });
+
+      const request = new NextRequest('http://localhost:3000/api/chat', {
+        method: 'POST',
+        body: JSON.stringify(maliciousInput),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      const response = await chatPost(request);
+
+      expect(response.status).toBe(200);
+      
+      // Verify sanitization was applied
+      expect(ValidationUtils.validateAndSanitize).toHaveBeenCalledWith(
+        {},
+        maliciousInput,
+        { sanitize: true }
+      );
+
+      // Verify clean data was stored
+      expect(prisma.chatbotMessage.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          message: 'Clean message content',
+          context: '{"malicious":"Clean metadata"}',
+        }),
+      });
+    });
+  });
+});

@@ -1,0 +1,719 @@
+// Production Prisma Schema - PostgreSQL
+// This schema works for both development and production
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  image         String?
+  emailVerified DateTime?
+  password      String?   // For credentials authentication
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Profile Information
+  bio                    String?
+  timezone              String?
+  preferredStudyTimes   String? // JSON string
+  studyGoals            String? // JSON string
+  academicLevel         String?
+  studyLevel            String? // Alias for academicLevel (for compatibility)
+  institution           String?
+  university            String? // Alias for institution (for compatibility)
+  major                 String?
+  graduationYear        Int?
+  year                  Int? // Alias for graduationYear (for compatibility)
+  location              String? // User location
+  focusTime             Int? // Preferred focus time in minutes
+  dailyGoalHours        Float? // Daily study goal in hours
+  totalPoints           Int? @default(0) // User points/gamification
+  currentStreak         Int? @default(0) // Current study streak
+  longestStreak         Int? @default(0) // Longest study streak
+  profileComplete       Boolean @default(false) // Profile completion status
+  isActive              Boolean @default(true) // User active status
+  availability          String? // Alias for availabilityHours (for compatibility)
+  
+  // Study Preferences
+  preferredSubjects     String? // JSON string array
+  learningStyle         String?
+  studyEnvironment      String?
+  availabilityHours     String? // JSON string
+  
+  // Privacy & Settings
+  profileVisibility     String   @default("public") // public, friends, private
+  showEmail            Boolean  @default(false)
+  showInstitution      Boolean  @default(true)
+  allowPartnerRequests Boolean  @default(true)
+  
+  // AI & ML Features
+  studyPatterns        String? // JSON - for ML analysis
+  engagementMetrics    String? // JSON - for personalization
+  preferences          String? // JSON - user settings and preferences
+  communicationPreference String? // Communication style preference (for compatibility)
+  studyIntensity       String? // Study intensity level (for compatibility)
+  
+  // Relationships
+  accounts               Account[]
+  sessions               Session[]
+  personalStudySessions  PersonalStudySession[]
+  studyGroups           StudyGroupMember[]
+  partnerships1         Partnership[] @relation("User1Partnership")
+  partnerships2         Partnership[] @relation("User2Partnership")
+  partnerRequests       PartnerRequest[]
+  sentRequests          PartnerRequest[] @relation("SentRequests")
+  goals                 Goal[]
+  reviews               Review[]
+  reviewsReceived       Review[] @relation("ReviewsReceived")
+  notifications         Notification[]
+  feedbacks             Feedback[]
+  userSubjects          UserSubject[]
+  calendarEvents        CalendarEvent[]
+  reminders             Reminder[]
+  aiInteractions        AIInteraction[]
+  
+  // New relationships for added models
+  organizedSessions     StudySession[] @relation("OrganizedSessions")
+  sessionParticipations StudySessionParticipant[]
+  sentStudyRequests     StudyRequest[] @relation("SentStudyRequests")
+  receivedStudyRequests StudyRequest[] @relation("ReceivedStudyRequests")
+  messages              Message[]
+  chatParticipations    ChatParticipant[]
+  messageReactions      MessageReaction[]
+  initiatedCalls        Call[]
+  callParticipations    CallParticipant[]
+  userAchievements      UserAchievement[]
+  chatbotMessages       ChatbotMessage[]
+  assignments           Assignment[]
+  eventAttendances      EventAttendee[]
+  userMetrics           UserMetric[]
+  userSessions          UserSession[]
+  userActivities        UserActivity[]
+  pageViews             PageView[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Subject {
+  id          String        @id @default(cuid())
+  name        String        @unique
+  description String?
+  category    String?
+  difficulty  String?       @default("beginner") // beginner, intermediate, advanced
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  userSubjects UserSubject[]
+  goals        Goal[]
+  sessions     PersonalStudySession[]
+  studyGroups  StudyGroup[]
+  assignments  Assignment[]
+}
+
+model UserSubject {
+  id              String   @id @default(cuid())
+  userId          String
+  subjectId       String
+  proficiencyLevel String? @default("beginner") // beginner, intermediate, advanced, expert
+  skillLevel      String? @default("beginner") // Alias for proficiencyLevel (for compatibility)
+  interestLevel   Int?     @default(5) // 1-10 scale
+  timeSpent       Int?     @default(0) // in minutes
+  lastStudied     DateTime?
+  isActive        Boolean  @default(true) // Subject active status
+  allowPartnerRequests Boolean @default(true) // Allow partner requests for this subject
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, subjectId])
+}
+
+model PersonalStudySession {
+  id          String    @id @default(cuid())
+  userId      String
+  subjectId   String?
+  title       String
+  description String?
+  duration    Int       // in minutes
+  status      String    @default("planned") // planned, active, completed, cancelled
+  scheduledAt DateTime?
+  startedAt   DateTime?
+  startTime   DateTime? // Alias for startedAt (for compatibility)
+  completedAt DateTime?
+  endTime     DateTime? // Alias for completedAt (for compatibility)
+  notes       String?
+  sessionType String? // Type of session (for compatibility)
+  pomodoroCount Int? @default(0) // Number of pomodoros completed
+  rating      Int? // Session rating (for compatibility)
+  completionStatus Int? @default(3) // Completion status rating (for compatibility)
+  
+  // Study metrics
+  focusRating     Int?      // 1-10 scale
+  difficultyRating Int?     // 1-10 scale
+  satisfaction    Int?      // 1-10 scale
+  goals           String?   // JSON array of goal IDs
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject Subject? @relation(fields: [subjectId], references: [id])
+}
+
+model StudyGroup {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  subjectId     String?
+  maxMembers    Int      @default(10)
+  isPrivate     Boolean  @default(false)
+  meetingLink   String?
+  meetingTime   DateTime?
+  timezone      String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  subject Subject?           @relation(fields: [subjectId], references: [id])
+  members StudyGroupMember[]
+  studySessions StudySession[]
+}
+
+model StudyGroupMember {
+  id          String @id @default(cuid())
+  userId      String
+  studyGroupId String
+  role        String @default("member") // member, moderator, admin
+  joinedAt    DateTime @default(now())
+  
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studyGroup StudyGroup @relation(fields: [studyGroupId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, studyGroupId])
+}
+
+model Partnership {
+  id        String   @id @default(cuid())
+  user1Id   String
+  user2Id   String
+  userId    String? // Alias for user1Id (for compatibility)
+  partnerId String? // Alias for user2Id (for compatibility)
+  status    String   @default("active") // active, paused, ended
+  startDate DateTime @default(now())
+  endDate   DateTime?
+  rating    Int? // Partnership rating (for compatibility)
+  completionStatus Int? @default(5) // Status rating (for compatibility)
+  
+  // Partnership metrics
+  sessionsCompleted Int @default(0)
+  totalHours       Int @default(0)
+  compatibilityScore Float?
+  
+  user1 User @relation("User1Partnership", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2 User @relation("User2Partnership", fields: [user2Id], references: [id], onDelete: Cascade)
+  
+  @@unique([user1Id, user2Id])
+}
+
+model PartnerRequest {
+  id          String   @id @default(cuid())
+  fromUserId  String
+  toUserId    String
+  message     String?
+  status      String   @default("pending") // pending, accepted, declined, cancelled
+  requestType String   @default("study_partner") // study_partner, study_group, project
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  fromUser User @relation(fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser   User @relation("SentRequests", fields: [toUserId], references: [id], onDelete: Cascade)
+  
+  @@unique([fromUserId, toUserId])
+}
+
+model Goal {
+  id          String   @id @default(cuid())
+  userId      String
+  subjectId   String?
+  title       String
+  description String?
+  targetDate  DateTime?
+  deadline    DateTime? // Alias for targetDate (for compatibility)
+  priority    String   @default("medium") // low, medium, high
+  status      String   @default("active") // active, completed, paused, cancelled
+  progress    Int      @default(0) // 0-100 percentage
+  current     Int      @default(0) // Current value (for compatibility)
+  target      Int      @default(100) // Target value (for compatibility)
+  targetValue Int      @default(100) // Alias for target (for compatibility)
+  currentValue Int     @default(0) // Alias for current (for compatibility)
+  
+  // Goal metrics
+  timeAllocated Int? // in minutes per week
+  timeSpent     Int? @default(0) // actual time spent
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject Subject? @relation(fields: [subjectId], references: [id])
+}
+
+model Review {
+  id         String @id @default(cuid())
+  reviewerId String
+  reviewedId String
+  authorId   String? // Alias for reviewerId (for compatibility)
+  targetId   String? // Alias for reviewedId (for compatibility)
+  rating     Int    // 1-5 scale
+  completionStatus Int? @default(3) // Alias for rating (for compatibility)
+  comment    String?
+  category   String @default("study_partner") // study_partner, tutor, group_member
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  reviewer User @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+  reviewed User @relation("ReviewsReceived", fields: [reviewedId], references: [id], onDelete: Cascade)
+  
+  @@unique([reviewerId, reviewedId, category])
+}
+
+model Notification {
+  id      String  @id @default(cuid())
+  userId  String
+  title   String
+  message String
+  type    String  @default("info") // info, success, warning, error
+  notificationType String @default("info") // Alias for type (for compatibility)
+  read    Boolean @default(false)
+  isRead  Boolean @default(false) // Alias for read (for compatibility)
+  
+  // Optional action data
+  actionType String? // navigate_to, external_link, etc.
+  actionData String? // JSON string with action parameters
+  relatedId  String? // ID of related entity (for compatibility)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Feedback {
+  id       String @id @default(cuid())
+  userId   String?
+  email    String?
+  category String @default("general") // bug, feature, general, complaint
+  title    String
+  message  String
+  priority String @default("medium") // low, medium, high, critical
+  status   String @default("open") // open, in_progress, resolved, closed
+  
+  // Admin fields
+  assignedTo String?
+  adminNotes String?
+  resolution String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model CalendarEvent {
+  id          String    @id @default(cuid())
+  userId      String
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime
+  location    String?
+  eventType   String    @default("study") // study, meeting, deadline, other
+  recurring   Boolean   @default(false)
+  
+  // Recurring event data
+  recurrenceRule String? // RRULE format
+  parentEventId  String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Reminder {
+  id          String    @id @default(cuid())
+  userId      String
+  title       String
+  description String?
+  reminderTime DateTime
+  dueDate     DateTime? // Alias for reminderTime (for compatibility)
+  recurring   Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  completed   Boolean   @default(false)
+  
+  // Recurring reminder data
+  recurrenceRule String? // daily, weekly, monthly, custom
+  recurrenceEnd  DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AIInteraction {
+  id           String   @id @default(cuid())
+  userId       String
+  interactionType String // summary, flashcard, quiz, matching, analysis
+  inputData    String   // JSON string of input
+  outputData   String   // JSON string of AI response
+  
+  // Metrics
+  responseTime Int?     // in milliseconds
+  tokensUsed   Int?
+  cost         Float?   // in USD
+  rating       Int?     // 1-5 user rating
+  
+  createdAt DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model StudySession {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  organizerId String
+  studyGroupId String?
+  startTime   DateTime
+  endTime     DateTime?
+  status      String    @default("scheduled") // scheduled, active, completed, cancelled
+  location    String?
+  meetingLink String?
+  maxParticipants Int?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  organizer User @relation("OrganizedSessions", fields: [organizerId], references: [id], onDelete: Cascade)
+  studyGroup StudyGroup? @relation(fields: [studyGroupId], references: [id])
+  participants StudySessionParticipant[]
+  messages Message[]
+}
+
+model StudySessionParticipant {
+  id            String @id @default(cuid())
+  userId        String
+  studySessionId String
+  joinedAt      DateTime @default(now())
+  leftAt        DateTime?
+  status        String @default("joined") // joined, left, removed
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studySession StudySession @relation(fields: [studySessionId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, studySessionId])
+}
+
+model StudyRequest {
+  id         String   @id @default(cuid())
+  senderId   String
+  receiverId String
+  message    String?
+  status     String   @default("pending") // pending, accepted, declined
+  type       String   @default("study_partner") // study_partner, study_group, tutoring
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  sender User @relation("SentStudyRequests", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("ReceivedStudyRequests", fields: [receiverId], references: [id], onDelete: Cascade)
+  
+  @@unique([senderId, receiverId])
+}
+
+model Message {
+  id            String @id @default(cuid())
+  content       String
+  senderId      String
+  studySessionId String?
+  chatRoomId    String?
+  type          String @default("text") // text, image, file, system
+  metadata      String? // JSON for additional data
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  studySession StudySession? @relation(fields: [studySessionId], references: [id], onDelete: Cascade)
+  chatRoom ChatRoom? @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  reactions MessageReaction[]
+}
+
+model ChatRoom {
+  id          String @id @default(cuid())
+  name        String?
+  type        String @default("direct") // direct, group, study_session
+  isPrivate   Boolean @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  participants ChatParticipant[]
+  messages Message[]
+  calls Call[]
+}
+
+model ChatParticipant {
+  id         String @id @default(cuid())
+  userId     String
+  chatRoomId String
+  role       String @default("participant") // participant, admin, moderator
+  joinedAt   DateTime @default(now())
+  lastRead   DateTime?
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chatRoom ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, chatRoomId])
+}
+
+model MessageReaction {
+  id        String @id @default(cuid())
+  messageId String
+  userId    String
+  emoji     String
+  
+  createdAt DateTime @default(now())
+  
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([messageId, userId, emoji])
+}
+
+model Call {
+  id         String @id @default(cuid())
+  chatRoomId String
+  initiatorId String
+  type       String @default("video") // video, audio
+  status     String @default("initiated") // initiated, ongoing, ended
+  startedAt  DateTime @default(now())
+  endedAt    DateTime?
+  
+  chatRoom ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  initiator User @relation(fields: [initiatorId], references: [id], onDelete: Cascade)
+  participants CallParticipant[]
+}
+
+model CallParticipant {
+  id       String @id @default(cuid())
+  callId   String
+  userId   String
+  joinedAt DateTime @default(now())
+  leftAt   DateTime?
+  
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([callId, userId])
+}
+
+model Achievement {
+  id          String @id @default(cuid())
+  name        String @unique
+  description String
+  icon        String
+  category    String
+  points      Int @default(0)
+  rarity      String @default("common") // common, rare, epic, legendary
+  criteria    String // JSON criteria for unlocking
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  userAchievements UserAchievement[]
+}
+
+model UserAchievement {
+  id            String @id @default(cuid())
+  userId        String
+  achievementId String
+  unlockedAt    DateTime @default(now())
+  progress      Int @default(100) // percentage completion
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, achievementId])
+}
+
+model ChatbotMessage {
+  id        String @id @default(cuid())
+  userId    String
+  message   String
+  response  String
+  context   String? // JSON context data
+  rating    Int? // 1-5 user rating
+  
+  createdAt DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Assignment {
+  id          String @id @default(cuid())
+  userId      String
+  title       String
+  description String?
+  dueDate     DateTime
+  priority    String @default("medium") // low, medium, high
+  status      String @default("pending") // pending, in_progress, completed, overdue
+  category    String?
+  subjectId   String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject Subject? @relation(fields: [subjectId], references: [id])
+}
+
+model Event {
+  id          String @id @default(cuid())
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime
+  location    String?
+  eventType   String @default("study") // study, meeting, social, other
+  isPublic    Boolean @default(false)
+  maxAttendees Int?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  attendees EventAttendee[]
+}
+
+model EventAttendee {
+  id       String @id @default(cuid())
+  userId   String
+  eventId  String
+  status   String @default("attending") // attending, maybe, not_attending
+  joinedAt DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, eventId])
+}
+
+model UserMetric {
+  id        String @id @default(cuid())
+  userId    String
+  metricType String // study_hours, sessions_completed, goals_achieved, etc.
+  value     Float
+  date      DateTime @default(now())
+  metadata  String? // JSON additional data
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, metricType, date])
+}
+
+// Analytics and tracking models
+model UserSession {
+  id        String   @id @default(cuid())
+  userId    String
+  sessionId String
+  startTime DateTime @default(now())
+  endTime   DateTime?
+  duration  Int?     // in seconds
+  ipAddress String?
+  userAgent String?
+  
+  createdAt DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([sessionId])
+}
+
+model UserActivity {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String   // click, view, interaction, etc.
+  category   String   // navigation, study, ai, etc.
+  page       String?
+  metadata   String?  // JSON data
+  timestamp  DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([action])
+  @@index([timestamp])
+}
+
+model PageView {
+  id        String   @id @default(cuid())
+  userId    String?
+  page      String
+  title     String?
+  referrer  String?
+  timestamp DateTime @default(now())
+  sessionId String?
+  
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([page])
+  @@index([timestamp])
+}
