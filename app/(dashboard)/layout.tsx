@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
 import DashboardLayoutClient from '@/components/layout/DashboardLayoutClient'
 import { Suspense } from 'react'
-import LoadingSpinner from '@/components/LoadingSpinner'
+import { LoadingSpinner } from '@/components/LoadingSpinner'
 
 export default async function DashboardLayout({
   children,
