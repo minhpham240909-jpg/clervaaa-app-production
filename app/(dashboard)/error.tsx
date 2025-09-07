@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { Button } from '@/components/ui/button'
+// Using basic button instead of UI library component
 
 export default function DashboardError({
   error,
@@ -45,20 +45,19 @@ export default function DashboardError({
         </p>
         
         <div className="space-y-3">
-          <Button 
+          <button 
             onClick={reset}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md font-medium transition-colors"
           >
             Try again
-          </Button>
+          </button>
           
-          <Button 
-            variant="outline"
+          <button 
             onClick={() => window.location.href = '/'}
-            className="w-full"
+            className="w-full border border-gray-300 hover:bg-gray-50 text-gray-700 py-2 px-4 rounded-md font-medium transition-colors"
           >
             Go to homepage
-          </Button>
+          </button>
         </div>
         
         {process.env.NODE_ENV === 'development' && (
