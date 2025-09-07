@@ -76,3 +76,19 @@ node_modules
 
 # Local Netlify folder
 .netlify
+
+# Additional Security Patterns
+*.key
+*.pem
+*.p12
+*.pfx
+.env
+.env.*
+!.env.example
+!.env.production.example
+secrets/
+private/
+*.secret
+*.token
+config.json
+credentials.json
