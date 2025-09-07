@@ -2,11 +2,8 @@
 const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['@prisma/client'],
-    esmExternals: 'loose',
-    // Improve client component handling
-    optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
   },
-  // Fix client component issues and Vercel deployment
+  // Minimal webpack config to avoid client-reference-manifest issues
   webpack: (config, { isServer, dev }) => {
     // Client-side fallbacks
     if (!isServer) {
@@ -27,61 +24,24 @@ const nextConfig = {
       }
     }
     
-    // Complete fix for client-reference-manifest.js issues on Vercel
+    // Minimal production optimizations to avoid manifest issues
     if (!dev && !isServer) {
-      // Disable problematic optimizations that cause manifest issues
-      config.optimization.splitChunks = {
-        chunks: 'async',
-        minSize: 20000,
-        minRemainingSize: 0,
-        minChunks: 1,
-        maxAsyncRequests: 30,
-        maxInitialRequests: 30,
-        enforceSizeThreshold: 50000,
-        cacheGroups: {
-          default: {
-            minChunks: 2,
-            priority: -20,
-            reuseExistingChunk: true,
-          },
-          vendor: {
-            test: /[\\/]node_modules[\\/]/,
-            name: 'vendors',
-            priority: -10,
-            chunks: 'async',
-          },
-        },
-      }
-      
-      // Disable features that cause client-reference-manifest issues
-      config.optimization.usedExports = false
-      config.optimization.sideEffects = false
-      config.optimization.providedExports = false
-      
-      // Prevent client component manifest generation issues
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        '@': require('path').resolve(__dirname),
-      }
+      // Disable chunk splitting entirely to avoid manifest issues
+      config.optimization.splitChunks = false
     }
     
     return config
   },
-  // Only ignore TypeScript and ESLint errors in development
+  // Build settings
   typescript: {
     ignoreBuildErrors: process.env.NODE_ENV === 'development',
   },
   eslint: {
     ignoreDuringBuilds: process.env.NODE_ENV === 'development',
   },
-  // Optimize production build
   swcMinify: true,
-  compress: true,
-  // Improve build performance
   poweredByHeader: false,
   reactStrictMode: true,
-  // Disable static optimization for pages with dynamic content
-  trailingSlash: false,
   images: {
     remotePatterns: [
       {
@@ -123,18 +83,6 @@ const nextConfig = {
           {
             key: 'Referrer-Policy',
             value: 'origin-when-cross-origin',
-          },
-          {
-            key: 'X-XSS-Protection',
-            value: '1; mode=block',
-          },
-          {
-            key: 'Strict-Transport-Security',
-            value: 'max-age=31536000; includeSubDomains',
-          },
-          {
-            key: 'Content-Security-Policy',
-            value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.openai.com https://www.googleapis.com https://api.github.com https://*.supabase.co wss://*.supabase.co; frame-ancestors 'none';",
           },
         ],
       },

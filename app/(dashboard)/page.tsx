@@ -1,5 +1,8 @@
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+'use client'
+
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 
 import DashboardOverviewSimple from '@/components/dashboard/DashboardOverviewSimple'
 import QuickActions from '@/components/dashboard/QuickActions'
@@ -7,13 +10,27 @@ import RecentActivity from '@/components/dashboard/RecentActivity'
 import UpcomingSessions from '@/components/dashboard/UpcomingSessions'
 import AIFeaturesQuick from '@/components/dashboard/AIFeaturesQuick'
 import { DashboardErrorBoundary } from '@/components/boundary/DashboardErrorBoundary'
+import { LoadingSpinner } from '@/components/LoadingSpinner'
 
-// This page uses dynamic server features
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
-
-export default async function DashboardPage() {
-  const session = await getServerSession(authOptions)
+export default function DashboardPage() {
+  const { data: session, status } = useSession()
+  const router = useRouter()
+  
+  useEffect(() => {
+    if (status === 'loading') return // Still loading
+    
+    if (!session && process.env.NODE_ENV === 'production') {
+      router.push('/signin')
+    }
+  }, [session, status, router])
+  
+  if (status === 'loading') {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <LoadingSpinner />
+      </div>
+    )
+  }
   
   return (
     <div className='space-y-6'>
