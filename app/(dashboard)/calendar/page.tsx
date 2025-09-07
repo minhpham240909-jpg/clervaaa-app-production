@@ -2,6 +2,10 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import InteractiveStudyCalendar from '@/components/calendar/InteractiveStudyCalendar'
 
+// This page uses dynamic server features
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export default async function CalendarPage() {
   const session = await getServerSession(authOptions)
   

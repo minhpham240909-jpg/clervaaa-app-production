@@ -8,6 +8,10 @@ import UpcomingSessions from '@/components/dashboard/UpcomingSessions'
 import AIFeaturesQuick from '@/components/dashboard/AIFeaturesQuick'
 import { DashboardErrorBoundary } from '@/components/boundary/DashboardErrorBoundary'
 
+// This page uses dynamic server features
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions)
   

@@ -2,6 +2,10 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { Users, BookOpen, Calendar, Settings, Globe, Lock } from 'lucide-react'
 
+// This page uses dynamic server features
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export default async function NewGroupPage() {
   await getServerSession(authOptions)
 

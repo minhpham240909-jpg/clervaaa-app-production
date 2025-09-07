@@ -3,6 +3,10 @@ import { authOptions } from '@/lib/auth'
 import ReminderPageClient from '@/components/reminders/ReminderPageClient'
 import ChunkErrorBoundary from '@/components/ChunkErrorBoundary'
 
+// This page uses dynamic server features
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export default async function RemindersPage() {
   const session = await getServerSession(authOptions)
   

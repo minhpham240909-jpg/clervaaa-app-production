@@ -3,6 +3,10 @@ import { authOptions } from '@/lib/auth'
 import { Calendar, Clock, Users, Video, MapPin } from 'lucide-react'
 import Link from 'next/link'
 
+// This page uses dynamic server features
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export default async function StudySessionsPage() {
   const session = await getServerSession(authOptions)
 

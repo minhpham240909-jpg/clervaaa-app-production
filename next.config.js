@@ -27,11 +27,11 @@ const nextConfig = {
       }
     }
     
-    // Enhanced client-reference-manifest.js fix for Vercel
+    // Complete fix for client-reference-manifest.js issues on Vercel
     if (!dev && !isServer) {
-      // Disable chunk splitting that causes manifest issues
+      // Disable problematic optimizations that cause manifest issues
       config.optimization.splitChunks = {
-        chunks: 'all',
+        chunks: 'async',
         minSize: 20000,
         minRemainingSize: 0,
         minChunks: 1,
@@ -48,20 +48,21 @@ const nextConfig = {
             test: /[\\/]node_modules[\\/]/,
             name: 'vendors',
             priority: -10,
-            chunks: 'all',
-          },
-          react: {
-            test: /[\\/]node_modules[\\/](react|react-dom)[\\/]/,
-            name: 'react',
-            priority: 20,
-            chunks: 'all',
+            chunks: 'async',
           },
         },
       }
       
-      // Prevent client-reference-manifest issues
+      // Disable features that cause client-reference-manifest issues
       config.optimization.usedExports = false
       config.optimization.sideEffects = false
+      config.optimization.providedExports = false
+      
+      // Prevent client component manifest generation issues
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        '@': require('path').resolve(__dirname),
+      }
     }
     
     return config
@@ -73,14 +74,14 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: process.env.NODE_ENV === 'development',
   },
-  // Enable standalone output for Docker (disabled for development)
-  // output: 'standalone',
   // Optimize production build
   swcMinify: true,
   compress: true,
   // Improve build performance
   poweredByHeader: false,
   reactStrictMode: true,
+  // Disable static optimization for pages with dynamic content
+  trailingSlash: false,
   images: {
     remotePatterns: [
       {
