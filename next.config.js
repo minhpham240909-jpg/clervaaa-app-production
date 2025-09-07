@@ -2,15 +2,38 @@
 const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['@prisma/client'],
+    esmExternals: 'loose',
   },
-  // Fix client component issues
-  webpack: (config, { isServer }) => {
+  // Fix client component issues and Vercel deployment
+  webpack: (config, { isServer, dev }) => {
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
+        net: false,
+        tls: false,
       }
     }
+    
+    // Fix for client-reference-manifest.js issues
+    if (!dev && !isServer) {
+      config.optimization.splitChunks = {
+        ...config.optimization.splitChunks,
+        cacheGroups: {
+          ...config.optimization.splitChunks.cacheGroups,
+          default: false,
+          vendors: false,
+          framework: {
+            chunks: 'all',
+            name: 'framework',
+            test: /(?<!node_modules.*)[\\/]node_modules[\\/](react|react-dom|scheduler|prop-types|use-subscription)[\\/]/,
+            priority: 40,
+            enforce: true,
+          },
+        },
+      }
+    }
+    
     return config
   },
   // Only ignore TypeScript and ESLint errors in development
