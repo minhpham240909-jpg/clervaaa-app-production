@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudyBuddy API Tester</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f8fafc;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 { color: #1e40af; }
+        h2 { color: #374151; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 4px;
+        }
+        button:hover { background: #2563eb; }
+        .success { background: #10b981; }
+        .error { background: #ef4444; }
+        .result {
+            background: #f3f4f6;
+            border-radius: 4px;
+            padding: 12px;
+            margin: 8px 0;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-left: 8px;
+        }
+        .status.success { background: #d1fae5; color: #065f46; }
+        .status.error { background: #fee2e2; color: #991b1b; }
+        input, select {
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            margin: 4px;
+        }
+        .test-section {
+            border-left: 4px solid #3b82f6;
+            padding-left: 16px;
+            margin: 16px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 StudyBuddy API Tester</h1>
+        <p>Test your enhanced StudyBuddy API with algorithms and new features!</p>
+        
+        <div class="test-section">
+            <h2>System Health & Documentation</h2>
+            <button onclick="testHealth()">Test Health Endpoint</button>
+            <button onclick="testDocs()">Open API Docs</button>
+            <button onclick="testDocsJSON()">Get API Docs JSON</button>
+        </div>
+
+        <div class="test-section">
+            <h2>Authentication Status</h2>
+            <button onclick="checkAuth()">Check Authentication</button>
+            <p><small>Note: Most endpoints require authentication. Sign in first through the main app.</small></p>
+        </div>
+
+        <div class="test-section">
+            <h2>Partner Matching (Advanced Algorithms)</h2>
+            <button onclick="testMatchingInfo()">Get Matching Info</button>
+            <button onclick="testBasicMatching()">Test Basic Matching</button>
+            <button onclick="testAdvancedMatching()" class="success">Test Advanced Algorithms</button>
+            
+            <div style="margin: 12px 0;">
+                <label>Limit: <input type="number" id="matchLimit" value="5" min="1" max="20"></label>
+                <label>AI Scoring: <input type="checkbox" id="aiScoring" checked></label>
+                <label>Advanced: <input type="checkbox" id="advancedAlgo" checked></label>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>Study Groups</h2>
+            <button onclick="testGetGroups()">Get Study Groups</button>
+            <button onclick="testCreateGroup()">Create Test Group</button>
+            
+            <div style="margin: 12px 0;">
+                <label>Group Name: <input type="text" id="groupName" value="Test Study Group"></label>
+                <label>Max Members: <input type="number" id="maxMembers" value="10" min="2" max="50"></label>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>Goals Management</h2>
+            <button onclick="testGetGoals()">Get Goals</button>
+            <button onclick="testCreateGoal()">Create Test Goal</button>
+            
+            <div style="margin: 12px 0;">
+                <label>Goal Title: <input type="text" id="goalTitle" value="Complete React Course"></label>
+                <label>Target Hours: <input type="number" id="targetHours" value="40" min="1"></label>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>Subjects</h2>
+            <button onclick="testGetSubjects()">Get All Subjects</button>
+            <button onclick="testGetUserSubjects()">Get My Subjects</button>
+        </div>
+
+        <div class="test-section">
+            <h2>AI Chat</h2>
+            <button onclick="testChatHistory()">Get Chat History</button>
+            <button onclick="testChatMessage()">Send Test Message</button>
+            
+            <div style="margin: 12px 0;">
+                <label>Message: <input type="text" id="chatMessage" value="Help me create a study plan for React" style="width: 300px;"></label>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>Performance Testing</h2>
+            <button onclick="testCaching()">Test Caching (Health)</button>
+            <button onclick="testRateLimit()">Test Rate Limiting</button>
+            <button onclick="measurePerformance()">Measure API Performance</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Test Results</h2>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        const resultsDiv = document.getElementById('results');
+        
+        function addResult(title, data, isSuccess = true) {
+            const resultDiv = document.createElement('div');
+            resultDiv.innerHTML = `
+                <h3>${title} <span class="status ${isSuccess ? 'success' : 'error'}">${isSuccess ? 'SUCCESS' : 'ERROR'}</span></h3>
+                <div class="result">${JSON.stringify(data, null, 2)}</div>
+            `;
+            resultsDiv.insertBefore(resultDiv, resultsDiv.firstChild);
+        }
+
+        async function apiCall(endpoint, options = {}) {
+            try {
+                const response = await fetch(endpoint, {
+                    credentials: 'include',
+                    ...options,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    }
+                });
+                
+                const data = await response.json();
+                return {
+                    status: response.status,
+                    statusText: response.statusText,
+                    data,
+                    headers: Object.fromEntries(response.headers.entries())
+                };
+            } catch (error) {
+                return {
+                    status: 0,
+                    error: error.message
+                };
+            }
+        }
+
+        // System Tests
+        async function testHealth() {
+            const result = await apiCall('/api/health');
+            addResult('Health Check', result, result.status === 200);
+        }
+
+        async function testDocs() {
+            window.open('/api/docs', '_blank');
+            addResult('API Docs', { message: 'Opened in new tab' }, true);
+        }
+
+        async function testDocsJSON() {
+            const result = await apiCall('/api/docs?format=json');
+            addResult('API Docs JSON', result, result.status === 200);
+        }
+
+        // Authentication
+        async function checkAuth() {
+            const result = await apiCall('/api/partners/matching');
+            const isAuthenticated = result.status !== 401;
+            addResult('Authentication Check', {
+                authenticated: isAuthenticated,
+                status: result.status,
+                message: isAuthenticated ? 'User is signed in' : 'User needs to sign in'
+            }, true);
+        }
+
+        // Partner Matching
+        async function testMatchingInfo() {
+            const result = await apiCall('/api/partners/matching');
+            addResult('Matching Info', result, result.status === 200 || result.status === 401);
+        }
+
+        async function testBasicMatching() {
+            const limit = document.getElementById('matchLimit').value;
+            const aiScoring = document.getElementById('aiScoring').checked;
+            
+            const result = await apiCall('/api/partners/matching', {
+                method: 'POST',
+                body: JSON.stringify({
+                    limit: parseInt(limit),
+                    includeAIScoring: aiScoring,
+                    useAdvancedAlgorithms: false
+                })
+            });
+            addResult('Basic Matching', result, result.status === 200);
+        }
+
+        async function testAdvancedMatching() {
+            const limit = document.getElementById('matchLimit').value;
+            const aiScoring = document.getElementById('aiScoring').checked;
+            
+            const result = await apiCall('/api/partners/matching', {
+                method: 'POST',
+                body: JSON.stringify({
+                    limit: parseInt(limit),
+                    includeAIScoring: aiScoring,
+                    useAdvancedAlgorithms: true, // 🚀 NEW FEATURE
+                    preferences: {
+                        studyLevel: ['INTERMEDIATE'],
+                        learningStyle: ['visual'],
+                        sessionType: 'virtual'
+                    }
+                })
+            });
+            addResult('🚀 Advanced Matching (NEW)', result, result.status === 200);
+        }
+
+        // Study Groups
+        async function testGetGroups() {
+            const result = await apiCall('/api/study-groups?limit=5');
+            addResult('Get Study Groups', result, result.status === 200);
+        }
+
+        async function testCreateGroup() {
+            const name = document.getElementById('groupName').value;
+            const maxMembers = document.getElementById('maxMembers').value;
+            
+            const result = await apiCall('/api/study-groups', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name,
+                    description: 'Test group created via API tester',
+                    maxMembers: parseInt(maxMembers),
+                    isPrivate: false,
+                    tags: ['test', 'api', 'demo']
+                })
+            });
+            addResult('Create Study Group', result, result.status === 201);
+        }
+
+        // Goals
+        async function testGetGoals() {
+            const result = await apiCall('/api/goals');
+            addResult('Get Goals', result, result.status === 200);
+        }
+
+        async function testCreateGoal() {
+            const title = document.getElementById('goalTitle').value;
+            const targetHours = document.getElementById('targetHours').value;
+            
+            const result = await apiCall('/api/goals', {
+                method: 'POST',
+                body: JSON.stringify({
+                    title,
+                    description: 'Test goal created via API tester',
+                    targetValue: parseInt(targetHours),
+                    unit: 'hours',
+                    category: 'STUDY_TIME',
+                    priority: 'MEDIUM'
+                })
+            });
+            addResult('Create Goal', result, result.status === 201);
+        }
+
+        // Subjects
+        async function testGetSubjects() {
+            const result = await apiCall('/api/subjects');
+            addResult('Get All Subjects', result, result.status === 200);
+        }
+
+        async function testGetUserSubjects() {
+            const result = await apiCall('/api/subjects?userSubjects=true');
+            addResult('Get User Subjects', result, result.status === 200);
+        }
+
+        // AI Chat
+        async function testChatHistory() {
+            const result = await apiCall('/api/chat');
+            addResult('Chat History', result, result.status === 200);
+        }
+
+        async function testChatMessage() {
+            const message = document.getElementById('chatMessage').value;
+            
+            const result = await apiCall('/api/chat', {
+                method: 'POST',
+                body: JSON.stringify({
+                    message,
+                    context: { type: 'STUDY_PLANNING' }
+                })
+            });
+            addResult('Send Chat Message', result, result.status === 200);
+        }
+
+        // Performance Testing
+        async function testCaching() {
+            const start1 = performance.now();
+            const result1 = await apiCall('/api/health');
+            const time1 = performance.now() - start1;
+            
+            const start2 = performance.now();
+            const result2 = await apiCall('/api/health');
+            const time2 = performance.now() - start2;
+            
+            addResult('Caching Test', {
+                firstRequest: { time: Math.round(time1), cached: result1.data?.cached },
+                secondRequest: { time: Math.round(time2), cached: result2.data?.cached },
+                improvement: Math.round(((time1 - time2) / time1) * 100) + '%'
+            }, true);
+        }
+
+        async function testRateLimit() {
+            const results = [];
+            for (let i = 0; i < 5; i++) {
+                const result = await apiCall('/api/health');
+                results.push({
+                    request: i + 1,
+                    status: result.status,
+                    rateLimitRemaining: result.headers['x-ratelimit-remaining']
+                });
+            }
+            addResult('Rate Limit Test', results, true);
+        }
+
+        async function measurePerformance() {
+            const endpoints = ['/api/health', '/api/partners/matching'];
+            const results = [];
+            
+            for (const endpoint of endpoints) {
+                const start = performance.now();
+                const result = await apiCall(endpoint);
+                const time = performance.now() - start;
+                
+                results.push({
+                    endpoint,
+                    responseTime: Math.round(time),
+                    status: result.status,
+                    cached: result.data?.cached
+                });
+            }
+            
+            addResult('Performance Measurement', results, true);
+        }
+        
+        // Initialize
+        addResult('API Tester Ready', {
+            message: 'Click buttons above to test different endpoints',
+            timestamp: new Date().toISOString(),
+            baseURL: window.location.origin
+        }, true);
+    </script>
+</body>
+</html>

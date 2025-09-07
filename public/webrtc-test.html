@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Test Page</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; margin: 2rem; }
+        .test-result { padding: 1rem; margin: 1rem 0; border-radius: 8px; }
+        .success { background: #dcfce7; border: 1px solid #22c55e; }
+        .error { background: #fef2f2; border: 1px solid #ef4444; }
+        .warning { background: #fef3c7; border: 1px solid #f59e0b; }
+        video { width: 300px; height: 200px; background: #000; border-radius: 8px; }
+        button { padding: 0.5rem 1rem; margin: 0.5rem; border-radius: 6px; border: none; background: #3b82f6; color: white; cursor: pointer; }
+        button:hover { background: #2563eb; }
+        button:disabled { background: #9ca3af; cursor: not-allowed; }
+        .controls { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
+    </style>
+</head>
+<body>
+    <h1>🎥 WebRTC Capability Test</h1>
+    <p>This page tests if your browser supports the WebRTC features needed for video calling.</p>
+    
+    <div id="support-check"></div>
+    
+    <div class="controls">
+        <button onclick="testCamera()">Test Camera</button>
+        <button onclick="testMicrophone()">Test Microphone</button>
+        <button onclick="testScreenShare()">Test Screen Share</button>
+        <button onclick="stopAllStreams()">Stop All</button>
+    </div>
+    
+    <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 2rem;">
+        <div>
+            <h3>Camera Preview</h3>
+            <video id="cameraVideo" autoplay muted playsinline></video>
+        </div>
+        <div>
+            <h3>Screen Share Preview</h3>
+            <video id="screenVideo" autoplay muted playsinline></video>
+        </div>
+    </div>
+    
+    <div id="logs" style="margin-top: 2rem;">
+        <h3>Test Logs</h3>
+        <div id="log-output" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; max-height: 300px; overflow-y: auto; font-family: monospace; white-space: pre-wrap;"></div>
+    </div>
+
+    <script>
+        let currentStreams = [];
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logOutput = document.getElementById('log-output');
+            const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'warning' ? '⚠️' : 'ℹ️';
+            logOutput.textContent += `[${timestamp}] ${prefix} ${message}\n`;
+            logOutput.scrollTop = logOutput.scrollHeight;
+            console.log(`[WebRTC Test] ${message}`);
+        }
+
+        function checkSupport() {
+            const results = [];
+            
+            // Check basic WebRTC support
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                results.push({ feature: 'getUserMedia', supported: true });
+            } else {
+                results.push({ feature: 'getUserMedia', supported: false });
+            }
+            
+            if (window.RTCPeerConnection) {
+                results.push({ feature: 'RTCPeerConnection', supported: true });
+            } else {
+                results.push({ feature: 'RTCPeerConnection', supported: false });
+            }
+            
+            if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+                results.push({ feature: 'Screen Sharing', supported: true });
+            } else {
+                results.push({ feature: 'Screen Sharing', supported: false });
+            }
+            
+            // Check HTTPS requirement
+            if (location.protocol === 'https:' || location.hostname === 'localhost') {
+                results.push({ feature: 'Secure Context', supported: true });
+            } else {
+                results.push({ feature: 'Secure Context', supported: false });
+            }
+            
+            return results;
+        }
+        
+        function displaySupportResults() {
+            const results = checkSupport();
+            const container = document.getElementById('support-check');
+            
+            results.forEach(result => {
+                const div = document.createElement('div');
+                div.className = `test-result ${result.supported ? 'success' : 'error'}`;
+                div.innerHTML = `<strong>${result.feature}:</strong> ${result.supported ? '✅ Supported' : '❌ Not Supported'}`;
+                container.appendChild(div);
+            });
+            
+            log('WebRTC support check completed');
+        }
+        
+        async function testCamera() {
+            try {
+                log('Testing camera access...');
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 1280, height: 720 }, 
+                    audio: false 
+                });
+                
+                const video = document.getElementById('cameraVideo');
+                video.srcObject = stream;
+                currentStreams.push(stream);
+                
+                log('✅ Camera access granted!', 'success');
+                log(`Video tracks: ${stream.getVideoTracks().length}`);
+                
+                const track = stream.getVideoTracks()[0];
+                const settings = track.getSettings();
+                log(`Resolution: ${settings.width}x${settings.height}`);
+                
+            } catch (error) {
+                log(`❌ Camera access failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testMicrophone() {
+            try {
+                log('Testing microphone access...');
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: false, 
+                    audio: true 
+                });
+                
+                currentStreams.push(stream);
+                log('✅ Microphone access granted!', 'success');
+                log(`Audio tracks: ${stream.getAudioTracks().length}`);
+                
+                // Stop audio stream after test
+                setTimeout(() => {
+                    stream.getTracks().forEach(track => track.stop());
+                    log('Audio test stream stopped');
+                }, 2000);
+                
+            } catch (error) {
+                log(`❌ Microphone access failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testScreenShare() {
+            try {
+                log('Testing screen share...');
+                const stream = await navigator.mediaDevices.getDisplayMedia({ 
+                    video: true, 
+                    audio: true 
+                });
+                
+                const video = document.getElementById('screenVideo');
+                video.srcObject = stream;
+                currentStreams.push(stream);
+                
+                log('✅ Screen sharing granted!', 'success');
+                log(`Screen tracks: video=${stream.getVideoTracks().length}, audio=${stream.getAudioTracks().length}`);
+                
+                // Listen for screen share end
+                stream.getVideoTracks()[0].addEventListener('ended', () => {
+                    log('Screen sharing ended by user');
+                    video.srcObject = null;
+                });
+                
+            } catch (error) {
+                log(`❌ Screen sharing failed: ${error.message}`, 'error');
+            }
+        }
+        
+        function stopAllStreams() {
+            log('Stopping all streams...');
+            currentStreams.forEach(stream => {
+                stream.getTracks().forEach(track => {
+                    track.stop();
+                    log(`Stopped ${track.kind} track`);
+                });
+            });
+            
+            document.getElementById('cameraVideo').srcObject = null;
+            document.getElementById('screenVideo').srcObject = null;
+            currentStreams = [];
+            log('All streams stopped', 'success');
+        }
+        
+        // Initialize
+        window.addEventListener('load', () => {
+            displaySupportResults();
+            log('WebRTC test page loaded');
+        });
+        
+        // Clean up on page unload
+        window.addEventListener('beforeunload', stopAllStreams);
+    </script>
+</body>
+</html>

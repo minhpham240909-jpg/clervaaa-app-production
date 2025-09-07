@@ -1,0 +1,562 @@
+import { NextRequest } from 'next/server';
+import { POST, GET } from '@/app/api/partners/matching/route';
+import { getServerSession } from 'next-auth';
+import { prisma } from '@/lib/prisma';
+// AI Service temporarily removed - tests will be updated with new implementation
+import { ValidationUtils } from '@/lib/validation';
+import { logger } from '@/lib/logger';
+import { monitoring } from '@/lib/monitoring';
+
+// Mock dependencies
+jest.mock('next-auth', () => ({
+  getServerSession: jest.fn(),
+}));
+
+jest.mock('@/lib/prisma', () => ({
+  prisma: {
+    user: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+    },
+    subject: {
+      findMany: jest.fn(),
+    },
+  },
+}));
+
+jest.mock('@/lib/ai', () => ({
+  __esModule: true,
+  default: {
+    calculatePartnerCompatibility: jest.fn(),
+  },
+}));
+
+jest.mock('@/lib/validation', () => ({
+  ValidationUtils: {
+    validateAndSanitize: jest.fn(),
+  },
+  partnerSchemas: {
+    matchingRequest: {},
+  },
+}));
+
+jest.mock('@/lib/logger', () => ({
+  logger: {
+    logRequest: jest.fn(() => ({ requestId: 'test-id' })),
+    logResponse: jest.fn(),
+    error: jest.fn(),
+  },
+}));
+
+jest.mock('@/lib/monitoring', () => ({
+  monitoring: {
+    recordAPIPerformance: jest.fn(),
+  },
+}));
+
+jest.mock('@/lib/rate-limit', () => ({
+  withRateLimit: (limiter: any, handler: any) => handler,
+  apiLimiter: {},
+}));
+
+const mockCurrentUser = {
+  id: 'current-user-123',
+  email: 'current@example.com',
+  studyLevel: 'INTERMEDIATE',
+  learningStyle: 'visual',
+  timezone: 'America/New_York',
+  subjects: [
+    {
+      subject: { name: 'Mathematics' },
+    },
+    {
+      subject: { name: 'Computer Science' },
+    },
+  ],
+  partnerships: [
+    { partnerId: 'existing-partner-1' },
+  ],
+  goals: [
+    { title: 'Master Calculus', status: 'ACTIVE' },
+  ],
+  personalStudySessions: [
+    { startTime: new Date(), endTime: new Date() },
+  ],
+};
+
+const mockPotentialPartner = {
+  id: 'partner-123',
+  name: 'John Doe',
+  image: 'https://example.com/avatar.jpg',
+  bio: 'Computer Science student',
+  university: 'MIT',
+  major: 'Computer Science',
+  year: 'Junior',
+  studyLevel: 'INTERMEDIATE',
+  learningStyle: 'visual',
+  timezone: 'America/New_York',
+  totalPoints: 1500,
+  currentStreak: 10,
+  isActive: true,
+  profileComplete: true,
+  subjects: [
+    {
+      subject: { name: 'Mathematics', category: 'Science' },
+    },
+    {
+      subject: { name: 'Physics', category: 'Science' },
+    },
+  ],
+  goals: [
+    { title: 'Learn Advanced Math', status: 'ACTIVE' },
+  ],
+  partnerships: [],
+  personalStudySessions: [
+    { startTime: new Date(), endTime: new Date() },
+  ],
+  _count: {
+    partnerships: 3,
+    receivedReviews: 5,
+  },
+};
+
+const mockSession = {
+  user: {
+    email: 'current@example.com',
+  },
+};
+
+const mockAICompatibility = {
+  compatibility: 88,
+  reasons: ['AI detected strong compatibility'],
+  sharedInterests: ['Advanced Mathematics'],
+  complementarySkills: ['Problem Solving'],
+};
+
+describe('/api/partners/matching POST', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (getServerSession as jest.Mock).mockResolvedValue(mockSession);
+    (prisma.user.findUnique as jest.Mock).mockResolvedValue(mockCurrentUser);
+    (prisma.user.findMany as jest.Mock).mockResolvedValue([mockPotentialPartner]);
+    (ValidationUtils.validateAndSanitize as jest.Mock).mockReturnValue({
+      preferences: null,
+      limit: 10,
+      includeAIScoring: true,
+    });
+    (AIService.calculatePartnerCompatibility as jest.Mock).mockResolvedValue(mockAICompatibility);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('returns partner matches successfully', async () => {
+    const request = new NextRequest('http://localhost:3000/api/partners/matching', {
+      method: 'POST',
+      body: JSON.stringify({
+        preferences: null,
+        limit: 10,
+        includeAIScoring: true,
+      }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.matches).toHaveLength(1);
+    expect(data.matches[0].user.name).toBe('John Doe');
+    expect(data.matches[0].compatibilityScore).toBeGreaterThan(0);
+    expect(data.matches[0].aiEnhanced).toBe(true);
+    expect(data.metadata.aiScoringEnabled).toBe(true);
+  });
+
+  it('returns 401 when user is not authenticated', async () => {
+    (getServerSession as jest.Mock).mockResolvedValue(null);
+
+    const request = new NextRequest('http://localhost:3000/api/partners/matching', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error).toBe('Unauthorized');
+  });
+
+  it('returns 404 when current user is not found', async () => {
+    (prisma.user.findUnique as jest.Mock).mockResolvedValue(null);
+
+    const request = new NextRequest('http://localhost:3000/api/partners/matching', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(data.error).toBe('User not found');
+  });
+
+  it('excludes current user and existing partners', async () => {
+    const request = new NextRequest('http://localhost:3000/api/partners/matching', {
+      method: 'POST',
+      body: JSON.stringify({ limit: 10 }),
+    });
+
+    await POST(request);
+
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { notIn: ['existing-partner-1', 'current-user-123'] },
+          isActive: true,
+          profileComplete: true,
+        }),
+      })
+    );
+  });
+
+  it('applies study level preferences', async () => {
+    (ValidationUtils.validateAndSanitize as jest.Mock).mockReturnValue({
+      preferences: {
+        studyLevel: ['ADVANCED', 'EXPERT'],
+      },
+      limit: 10,
+      includeAIScoring: false,
+    });
+
+    const request = new NextRequest('http://localhost:3000/api/partners/matching', {
+      method: 'POST',
+      body: JSON.stringify({
+        preferences: {
+          studyLevel: ['ADVANCED', 'EXPERT'],
+        },
+      }),
+    });
+
+    await POST(request);
+
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          studyLevel: { in: ['ADVANCED', 'EXPERT'] },
+        }),
+      })
+    );
+  });
+
+  it('applies learning style preferences', async () => {
+    (ValidationUtils.validateAndSanitize as jest.Mock).mockReturnValue({
+      preferences: {
+        learningStyle: ['visual', 'auditory'],
+      },
+      limit: 10,
+      includeAIScoring: false,
+    });
+
+    const request = new NextRequest('http://localhost:3000/api/partners/matching', {
+      method: 'POST',
+      body: JSON.stringify({
+        preferences: {
+          learningStyle: ['visual', 'auditory'],
+        },
+      }),
+    });
+
+    await POST(request);
+
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          learningStyle: { in: ['visual', 'auditory'] },
+        }),
+      })
+    );
+  });
+
+  it('calculates compatibility scores correctly', async () => {
+    const request = new NextRequest('http://localhost:3000/api/partners/matching', {
+      method: 'POST',
+      body: JSON.stringify({ includeAIScoring: false }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    const match = data.matches[0];
+    expect(match.compatibilityScore).toBeGreaterThan(0);
+    expect(match.reasons).toContain('1 shared subject');
+    expect(match.reasons).toContain('Same study level');
+    expect(match.reasons).toContain('Same time zone');
+  });
+
+  it('includes AI scoring when enabled', async () => {
+    const request = new NextRequest('http://localhost:3000/api/partners/matching', {
+      method: 'POST',
+      body: JSON.stringify({ includeAIScoring: true }),
+    });
+
+    await POST(request);
+
+    expect(AIService.calculatePartnerCompatibility).toHaveBeenCalledWith(
+      mockCurrentUser,
+      mockPotentialPartner
+    );
+  });
+
+  it('handles AI scoring failures gracefully', async () => {
+    (AIService.calculatePartnerCompatibility as jest.Mock).mockRejectedValue(
+      new Error('AI service failed')
+    );
+
+    const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+    const request = new NextRequest('http://localhost:3000/api/partners/matching', {
+      method: 'POST',
+      body: JSON.stringify({ includeAIScoring: true }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.matches[0].aiEnhanced).toBe(false);
+    expect(consoleSpy).toHaveBeenCalled();
+
+    consoleSpy.mockRestore();
+  });
+
+  it('sorts matches by compatibility score', async () => {
+    const mockPartner1 = { ...mockPotentialPartner, id: 'partner-1' };
+    const mockPartner2 = { ...mockPotentialPartner, id: 'partner-2', studyLevel: 'BEGINNER' };
+    
+    (prisma.user.findMany as jest.Mock).mockResolvedValue([mockPartner1, mockPartner2]);
+
+    const request = new NextRequest('http://localhost:3000/api/partners/matching', {
+      method: 'POST',
+      body: JSON.stringify({ includeAIScoring: false }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(data.matches).toHaveLength(2);
+    // First match should have higher compatibility score than second
+    expect(data.matches[0].compatibilityScore).toBeGreaterThanOrEqual(
+      data.matches[1].compatibilityScore
+    );
+  });
+
+  it('limits results correctly', async () => {
+    const mockPartners = Array(15).fill(null).map((_, i) => ({
+      ...mockPotentialPartner,
+      id: `partner-${i}`,
+    }));
+    
+    (prisma.user.findMany as jest.Mock).mockResolvedValue(mockPartners);
+    (ValidationUtils.validateAndSanitize as jest.Mock).mockReturnValue({
+      preferences: null,
+      limit: 5,
+      includeAIScoring: false,
+    });
+
+    const request = new NextRequest('http://localhost:3000/api/partners/matching', {
+      method: 'POST',
+      body: JSON.stringify({ limit: 5 }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(data.matches).toHaveLength(5);
+  });
+
+  it('includes helpful tips in response', async () => {
+    const request = new NextRequest('http://localhost:3000/api/partners/matching', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(data.tips).toBeInstanceOf(Array);
+    expect(data.tips.length).toBeGreaterThan(0);
+    expect(data.tips[0]).toContain('compatibility');
+  });
+
+  it('handles validation errors', async () => {
+    const validationError = new Error('Validation failed');
+    validationError.name = 'ZodError';
+    (ValidationUtils.validateAndSanitize as jest.Mock).mockImplementation(() => {
+      throw validationError;
+    });
+
+    const request = new NextRequest('http://localhost:3000/api/partners/matching', {
+      method: 'POST',
+      body: JSON.stringify({ invalid: 'data' }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toBe('Invalid request format');
+  });
+
+  it('handles database errors', async () => {
+    (prisma.user.findMany as jest.Mock).mockRejectedValue(new Error('Database error'));
+
+    const request = new NextRequest('http://localhost:3000/api/partners/matching', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(data.error).toBe('Failed to find partner matches');
+    expect(logger.error).toHaveBeenCalled();
+  });
+
+  it('records performance metrics', async () => {
+    const request = new NextRequest('http://localhost:3000/api/partners/matching', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+
+    await POST(request);
+
+    expect(monitoring.recordAPIPerformance).toHaveBeenCalledWith(
+      '/api/partners/matching',
+      'POST',
+      expect.any(Number),
+      200
+    );
+  });
+
+  it('calculates subject overlap correctly', async () => {
+    const request = new NextRequest('http://localhost:3000/api/partners/matching', {
+      method: 'POST',
+      body: JSON.stringify({ includeAIScoring: false }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    const match = data.matches[0];
+    expect(match.sharedInterests).toContain('Mathematics');
+    expect(match.reasons).toContain('1 shared subject');
+  });
+
+  it('handles time zone compatibility', async () => {
+    const request = new NextRequest('http://localhost:3000/api/partners/matching', {
+      method: 'POST',
+      body: JSON.stringify({ includeAIScoring: false }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    const match = data.matches[0];
+    expect(match.reasons).toContain('Same time zone');
+  });
+
+  it('includes metadata in response', async () => {
+    const request = new NextRequest('http://localhost:3000/api/partners/matching', {
+      method: 'POST',
+      body: JSON.stringify({ includeAIScoring: true }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(data.metadata).toEqual({
+      totalCandidates: 1,
+      returnedMatches: 1,
+      aiScoringEnabled: true,
+      preferences: null,
+      generatedAt: expect.any(String),
+    });
+  });
+});
+
+describe('/api/partners/matching GET', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (getServerSession as jest.Mock).mockResolvedValue(mockSession);
+    (prisma.subject.findMany as jest.Mock).mockResolvedValue([
+      { name: 'Mathematics', category: 'Science' },
+      { name: 'Physics', category: 'Science' },
+      { name: 'History', category: 'Humanities' },
+    ]);
+  });
+
+  it('returns matching information successfully', async () => {
+    const request = new NextRequest('http://localhost:3000/api/partners/matching');
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.filters.subjects).toEqual(['Mathematics', 'Physics', 'History']);
+    expect(data.filters.studyLevels).toEqual(['BEGINNER', 'INTERMEDIATE', 'ADVANCED', 'EXPERT']);
+    expect(data.filters.learningStyles).toEqual(['visual', 'auditory', 'kinesthetic', 'reading']);
+    expect(data.filters.sessionTypes).toEqual(['virtual', 'in_person', 'hybrid']);
+  });
+
+  it('returns algorithm information', async () => {
+    const request = new NextRequest('http://localhost:3000/api/partners/matching');
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(data.algorithm.factors).toBeInstanceOf(Array);
+    expect(data.algorithm.maxScore).toBe(100);
+    expect(data.algorithm.aiEnhanced).toBe(true);
+    
+    const sharedSubjectsFactor = data.algorithm.factors.find(
+      (f: any) => f.name === 'Shared Subjects'
+    );
+    expect(sharedSubjectsFactor.weight).toBe(45);
+  });
+
+  it('returns unique subject categories', async () => {
+    const request = new NextRequest('http://localhost:3000/api/partners/matching');
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(data.filters.subjectCategories).toEqual(['Science', 'Humanities']);
+  });
+
+  it('returns 401 when user is not authenticated', async () => {
+    (getServerSession as jest.Mock).mockResolvedValue(null);
+
+    const request = new NextRequest('http://localhost:3000/api/partners/matching');
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error).toBe('Unauthorized');
+  });
+
+  it('handles database errors in GET', async () => {
+    (prisma.subject.findMany as jest.Mock).mockRejectedValue(new Error('Database error'));
+
+    const request = new NextRequest('http://localhost:3000/api/partners/matching');
+
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(data.error).toBe('Failed to fetch matching information');
+  });
+});

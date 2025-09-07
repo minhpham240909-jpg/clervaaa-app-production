@@ -1,0 +1,212 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudyMatch Testing Guide</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .test-section { background: #f5f5f5; padding: 15px; margin: 10px 0; border-radius: 8px; }
+        .test-item { margin: 10px 0; }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .warning { color: #ffc107; }
+        button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin: 5px; }
+        button:hover { background: #0056b3; }
+        .checklist { list-style-type: none; }
+        .checklist li { margin: 5px 0; }
+        .checklist input[type="checkbox"] { margin-right: 10px; }
+    </style>
+</head>
+<body>
+    <h1>🚀 StudyMatch Enhanced App Testing Guide</h1>
+    
+    <div class="test-section">
+        <h2>📋 Pre-Testing Checklist</h2>
+        <ul class="checklist">
+            <li><input type="checkbox" id="server"> <label for="server">Development server is running at <a href="http://localhost:3000" target="_blank">http://localhost:3000</a></label></li>
+            <li><input type="checkbox" id="auth"> <label for="auth">Authentication is working (can sign in/out)</label></li>
+            <li><input type="checkbox" id="db"> <label for="db">Database connection is established</label></li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>🤝 Partner Matching Tests</h2>
+        <h3>Test Enhanced AI Matching:</h3>
+        <ol>
+            <li>Navigate to <code>/partners</code> or find partners page</li>
+            <li>Click "Find Partners" or similar button</li>
+            <li>Verify AI-enhanced matching interface loads</li>
+            <li>Check compatibility scores are displayed (should show percentages)</li>
+            <li>Look for AI insights panel (behavioral analysis, predictions)</li>
+            <li>Test filtering options (study level, subjects, learning style)</li>
+            <li>Verify "Connect" button sends partner requests</li>
+        </ol>
+        <ul class="checklist">
+            <li><input type="checkbox"> Partner matching page loads</li>
+            <li><input type="checkbox"> AI compatibility scores visible</li>
+            <li><input type="checkbox"> Behavioral insights displayed</li>
+            <li><input type="checkbox"> Partnership predictions shown</li>
+            <li><input type="checkbox"> Filtering works correctly</li>
+            <li><input type="checkbox"> Partner requests can be sent</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>💬 Smart Chat Tests</h2>
+        <h3>Test Enhanced Chat Features:</h3>
+        <ol>
+            <li>Navigate to messages/chat page</li>
+            <li>Open a chat with a study partner</li>
+            <li>Send messages and verify real-time delivery</li>
+            <li>Click the AI assistant button (brain icon)</li>
+            <li>Verify AI suggestions panel appears</li>
+            <li>Test study-related keywords (mention "calculus", "study", "tired")</li>
+            <li>Check if AI provides contextual suggestions</li>
+            <li>Test emoji reactions and file uploads</li>
+        </ol>
+        <ul class="checklist">
+            <li><input type="checkbox"> Chat interface loads properly</li>
+            <li><input type="checkbox"> Messages send and receive</li>
+            <li><input type="checkbox"> AI assistant button visible</li>
+            <li><input type="checkbox"> AI suggestions appear</li>
+            <li><input type="checkbox"> Context-aware recommendations work</li>
+            <li><input type="checkbox"> File upload and emojis work</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>📹 Enhanced Video Calling Tests</h2>
+        <h3>Test Study-Focused Video Calls:</h3>
+        <ol>
+            <li>In a chat window, click the video call button</li>
+            <li>Verify enhanced call interface opens</li>
+            <li>Check camera and microphone permissions</li>
+            <li>Test audio/video toggle buttons</li>
+            <li>Click "Study Tools" to open study sidebar</li>
+            <li>Test Pomodoro timer (start/pause/reset)</li>
+            <li>Try taking notes in the study notes section</li>
+            <li>Test screen sharing functionality</li>
+            <li>Check call statistics and quality indicators</li>
+        </ol>
+        <ul class="checklist">
+            <li><input type="checkbox"> Video call interface opens</li>
+            <li><input type="checkbox"> Camera/microphone work</li>
+            <li><input type="checkbox"> Audio/video controls functional</li>
+            <li><input type="checkbox"> Study tools sidebar opens</li>
+            <li><input type="checkbox"> Pomodoro timer works</li>
+            <li><input type="checkbox"> Note-taking feature works</li>
+            <li><input type="checkbox"> Screen sharing available</li>
+            <li><input type="checkbox"> Call quality indicators visible</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>🧠 AI Study Scheduler Tests</h2>
+        <h3>Test Smart Study Planning:</h3>
+        <ol>
+            <li>Look for AI Study Scheduler component</li>
+            <li>Check if AI recommendations are displayed</li>
+            <li>Test creating AI-optimized study sessions</li>
+            <li>Verify study session details and predictions</li>
+            <li>Test session scheduling with partners</li>
+        </ol>
+        <ul class="checklist">
+            <li><input type="checkbox"> AI scheduler interface loads</li>
+            <li><input type="checkbox"> AI recommendations visible</li>
+            <li><input type="checkbox"> Can create study sessions</li>
+            <li><input type="checkbox"> Session predictions displayed</li>
+            <li><input type="checkbox"> Partner scheduling works</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>🔧 Technical Tests</h2>
+        <h3>Performance and Reliability:</h3>
+        <ul class="checklist">
+            <li><input type="checkbox"> Page loads are fast (< 3 seconds)</li>
+            <li><input type="checkbox"> No JavaScript errors in console</li>
+            <li><input type="checkbox"> Responsive design works on mobile</li>
+            <li><input type="checkbox"> Real-time features work (chat, calls)</li>
+            <li><input type="checkbox"> Database operations complete successfully</li>
+            <li><input type="checkbox"> API endpoints respond correctly</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>🐛 Common Issues & Solutions</h2>
+        <div class="test-item">
+            <strong>Camera/Microphone not working:</strong>
+            <ul>
+                <li>Check browser permissions (click lock icon in address bar)</li>
+                <li>Try refreshing the page</li>
+                <li>Ensure using HTTPS or localhost</li>
+            </ul>
+        </div>
+        <div class="test-item">
+            <strong>AI features not showing:</strong>
+            <ul>
+                <li>Check browser console for errors</li>
+                <li>Verify API endpoints are responding</li>
+                <li>Ensure database is properly set up</li>
+            </ul>
+        </div>
+        <div class="test-item">
+            <strong>Real-time features not working:</strong>
+            <ul>
+                <li>Check Supabase configuration</li>
+                <li>Verify WebSocket connections</li>
+                <li>Try opening multiple browser tabs</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>📊 Testing Results</h2>
+        <button onclick="generateReport()">Generate Test Report</button>
+        <div id="testReport" style="margin-top: 10px;"></div>
+    </div>
+
+    <script>
+        function generateReport() {
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+            const total = checkboxes.length;
+            const checked = Array.from(checkboxes).filter(cb => cb.checked).length;
+            const percentage = Math.round((checked / total) * 100);
+            
+            let status = 'error';
+            let message = 'Needs significant work';
+            
+            if (percentage >= 90) {
+                status = 'success';
+                message = 'Excellent! App is ready for production';
+            } else if (percentage >= 75) {
+                status = 'success';
+                message = 'Good! Minor issues to address';
+            } else if (percentage >= 50) {
+                status = 'warning';
+                message = 'Moderate issues need attention';
+            }
+            
+            document.getElementById('testReport').innerHTML = `
+                <div class="${status}">
+                    <h3>Test Results: ${checked}/${total} (${percentage}%)</h3>
+                    <p><strong>${message}</strong></p>
+                    <p>Timestamp: ${new Date().toLocaleString()}</p>
+                </div>
+            `;
+        }
+
+        // Auto-check server status
+        fetch('/')
+            .then(() => {
+                document.getElementById('server').checked = true;
+                console.log('✅ Server is running');
+            })
+            .catch(() => {
+                console.log('❌ Server is not responding');
+            });
+    </script>
+</body>
+</html>

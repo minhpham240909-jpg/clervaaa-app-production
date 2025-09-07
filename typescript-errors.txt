@@ -1,0 +1,6 @@
+components/LoadingState.tsx(236,58): error TS1005: ',' expected.
+components/LoadingState.tsx(236,77): error TS1005: ',' expected.
+components/LoadingState.tsx(236,90): error TS1005: ',' expected.
+components/LoadingState.tsx(244,4): error TS1128: Declaration or statement expected.
+components/LoadingState.tsx(244,8): error TS1005: ';' expected.
+components/LoadingState.tsx(252,1): error TS1128: Declaration or statement expected.

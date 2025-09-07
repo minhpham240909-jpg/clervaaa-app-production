@@ -1,0 +1,29 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "18"
+  NPM_VERSION = "9"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    Referrer-Policy = "origin-when-cross-origin"
+    Permissions-Policy = "camera=*, microphone=*, display-capture=*"
+
+[[headers]]
+  for = "/test-video-calls"
+  [headers.values]
+    Permissions-Policy = "camera=*, microphone=*, display-capture=*"
+
+[[redirects]]
+  from = "/webrtc-test"
+  to = "/webrtc-test.html"
+  status = 200
+
+[functions]
+  node_bundler = "esbuild"
