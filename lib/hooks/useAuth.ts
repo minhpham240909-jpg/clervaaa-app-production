@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { signIn, getProviders } from 'next-auth/react'
 import { toast } from 'react-hot-toast'
 
@@ -9,16 +10,13 @@ export interface AuthError {
 }
 
 export const useAuth = () => {
+  const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [providers, setProviders] = useState<any>(null)
   const [error, setError] = useState<AuthError | null>(null)
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchProviders()
-  }, [])
-
-  const fetchProviders = async () => {
+  const fetchProviders = useCallback(async () => {
     try {
       const res = await getProviders()
       setProviders(res)
@@ -30,7 +28,11 @@ export const useAuth = () => {
         details: 'Please check your internet connection and refresh the page.'
       })
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    fetchProviders()
+  }, [fetchProviders])
 
   const signInWithProvider = async (provider: string) => {
     setIsLoading(true)
@@ -97,14 +99,9 @@ export const useAuth = () => {
 
         toast.error(errorMessage)
       } else if (result?.ok) {
-        // Successful sign-in - redirect manually
+        // Successful sign-in - fast client-side navigation
         toast.success('Successfully signed in!')
-        
-        // Check if user should go to founder dashboard
-        const founderEmails = (process.env.NEXT_PUBLIC_FOUNDER_EMAILS || '').split(',').map((e: any) => e.trim()).filter((e: any) => e.length > 0)
-        
-        // For now, just redirect to result URL or dashboard
-        window.location.href = result.url || '/dashboard'
+        router.push('/dashboard')
       }
     } catch (err) {
       console.error('Sign in error', err)

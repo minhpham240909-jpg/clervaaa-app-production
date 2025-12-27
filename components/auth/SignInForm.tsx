@@ -1,17 +1,18 @@
 'use client'
 
+import React from 'react';
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'next/navigation'
-import { BookOpen, Loader2, Shield, CheckCircle, AlertCircle, RefreshCw, Eye, EyeOff, User, Mail, Lock } from 'lucide-react'
+import { useSearchParams, useRouter } from 'next/navigation'
+import { AlertCircle, BookOpen, CheckCircle, Eye, EyeOff, Info, Loader2, Lock, Mail, RefreshCw, Shield, User } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { signIn } from 'next-auth/react'
 
 export default function SignInForm({ session }: { session?: any }) {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const {
     isLoading,
-    providers,
     error,
     selectedProvider,
     signInWithProvider,
@@ -92,8 +93,8 @@ export default function SignInForm({ session }: { session?: any }) {
         if (result?.error) {
           setFormError('Account created but failed to sign in. Please try signing in manually.')
         } else {
-          // Redirect will be handled by NextAuth
-          window.location.href = '/dashboard'
+          // Fast client-side navigation
+          router.push('/dashboard')
         }
       } else {
         // Sign in
@@ -106,8 +107,8 @@ export default function SignInForm({ session }: { session?: any }) {
         if (result?.error) {
           setFormError('Invalid email or password')
         } else {
-          // Redirect will be handled by NextAuth
-          window.location.href = '/dashboard'
+          // Fast client-side navigation
+          router.push('/dashboard')
         }
       }
     } catch (error) {

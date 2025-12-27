@@ -1,4 +1,6 @@
+import React from 'react';
 import { getServerSession } from 'next-auth'
+import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
 import Hero from '@/components/landing/Hero'
 import Features from '@/components/landing/Features'
@@ -8,7 +10,12 @@ import Header from '@/components/layout/Header'
 import Footer from '@/components/layout/Footer'
 
 export default async function LandingPage() {
-  await getServerSession(authOptions)
+  const session = await getServerSession(authOptions)
+
+  // Redirect authenticated users directly to dashboard
+  if (session) {
+    redirect('/dashboard')
+  }
 
   return (
     <div className='min-h-screen relative floating-shapes bg-pattern'>
